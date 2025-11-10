@@ -122,6 +122,7 @@ poetry run python src/main.py --ticker AAPL,MSFT,NVDA --start-date 2024-01-01 --
 #### Run the Backtester
 ```bash
 poetry run python src/backtester.py --ticker AAPL,MSFT,NVDA
+poetry run python src/main.py --ticker AAPL,MSFT,NVDA --show-reasoning
 ```
 
 **Example Output:**

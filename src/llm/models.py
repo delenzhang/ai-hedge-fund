@@ -31,6 +31,7 @@ class ModelProvider(str, Enum):
     GIGACHAT = "GigaChat"
     AZURE_OPENAI = "Azure OpenAI"
     XAI = "xAI"
+    BASEURL= 'http://ftp-ai.woa.com/api/llmproxy'
 
 
 class LLMModel(BaseModel):
@@ -87,9 +88,10 @@ def load_models_from_json(json_path: str) -> List[LLMModel]:
             LLMModel(
                 display_name=model_data["display_name"],
                 model_name=model_data["model_name"],
-                provider=provider_enum
+                provider=provider_enum,
             )
         )
+
     return models
 
 
