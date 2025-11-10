@@ -183,18 +183,34 @@ class Cache:
         
         return None
 
-    def get_line_items(self, ticker: str) -> list[dict[str, any]] | None:
+    def get_line_items(self, ticker: str, period: str = "ttm") -> list[dict[str, any]] | None:
         """Get cached line items if available."""
-        data = self._load_from_file("line_items", ticker)
+        cache_key = f"{ticker}_{period}"
+        data = self._load_from_file("line_items", cache_key)
         if data is not None:
             self._record_cache_hit("line_items")
         return data
 
-    def set_line_items(self, ticker: str, data: list[dict[str, any]]):
-        """Append new line items to cache."""
-        existing = self.get_line_items(ticker)
+    def set_line_items(self, ticker: str, period: str, data: list[dict[str, any]]):
+        """Update line items cache with new data."""
+        cache_key = f"{ticker}_{period}"
+        existing = self.get_line_items(ticker, period)
         merged = self._merge_data(existing, data, key_field="report_period")
-        self._save_to_file("line_items", ticker, merged)
+        # Sort by report_period descending (newest first)
+        merged.sort(key=lambda x: x.get("report_period", ""), reverse=True)
+        self._save_to_file("line_items", cache_key, merged)
+
+    def get_latest_line_items_date(self, ticker: str, period: str = "ttm") -> str | None:
+        """Get the latest report_period in line items cache."""
+        cached_data = self.get_line_items(ticker, period)
+        if not cached_data:
+            return None
+        
+        # Data should be sorted by report_period descending, so first entry is latest
+        if cached_data:
+            return cached_data[0].get("report_period")
+        
+        return None
 
     def get_insider_trades(self, ticker: str) -> list[dict[str, any]] | None:
         """Get cached insider trades if available."""
@@ -301,20 +317,20 @@ class Cache:
         by_type = stats.get("by_type", {})
         
         print("\n" + "=" * 50)
-        print("缓存命中统计 (Cache Hit Statistics)")
+        print("Cache Hit Statistics")
         print("=" * 50)
-        print(f"总命中次数 (Total Hits): {total_hits:,}")
-        print("\n按类型统计 (By Type):")
+        print(f"Total Hits: {total_hits:,}")
+        print("\nBy Type:")
         print("-" * 50)
         
         # Cache type display names
         type_names = {
-            "prices": "价格数据 (Prices)",
-            "financial_metrics": "财务指标 (Financial Metrics)",
-            "line_items": "财务项目 (Line Items)",
-            "insider_trades": "内部交易 (Insider Trades)",
-            "company_news": "公司新闻 (Company News)",
-            "market_cap": "市值 (Market Cap)",
+            "prices": "Prices",
+            "financial_metrics": "Financial Metrics",
+            "line_items": "Line Items",
+            "insider_trades": "Insider Trades",
+            "company_news": "Company News",
+            "market_cap": "Market Cap",
         }
         
         for cache_type, count in sorted(by_type.items(), key=lambda x: x[1], reverse=True):
