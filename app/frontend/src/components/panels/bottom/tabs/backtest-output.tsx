@@ -17,14 +17,14 @@ function BacktestProgress({ agentData }: { agentData: Record<string, any> }) {
   return (
     <Card className="bg-transparent mb-4">
       <CardHeader>
-        <CardTitle className="text-lg">Backtest Progress</CardTitle>
+        <CardTitle className="text-lg">回测进度 / Backtest Progress</CardTitle>
       </CardHeader>
       <CardContent>
         <div className="space-y-4">
           {/* Current Status */}
           <div className="flex items-center gap-2">
             <MoreHorizontal className="h-4 w-4 text-yellow-500" />
-            <span className="font-medium">Backtest Runner</span>
+            <span className="font-medium">回测运行器 / Backtest Runner</span>
             <span className="text-yellow-500 flex-1">{backtestAgent.message || backtestAgent.status}</span>
           </div>
         </div>
@@ -96,23 +96,23 @@ function BacktestTradingTable({ agentData }: { agentData: Record<string, any> })
   return (
     <Card className="bg-transparent mb-4">
       <CardHeader>
-        <CardTitle className="text-lg">Activity</CardTitle>
+        <CardTitle className="text-lg">活动 / Activity</CardTitle>
       </CardHeader>
       <CardContent>
         <div className="max-h-96 overflow-y-auto">
           <Table>
             <TableHeader>
               <TableRow>
-                <TableHead>Date</TableHead>
-                <TableHead>Ticker</TableHead>
-                <TableHead>Action</TableHead>
-                <TableHead>Quantity</TableHead>
-                <TableHead>Price</TableHead>
-                <TableHead>Shares</TableHead>
-                <TableHead>Position Value</TableHead>
-                <TableHead>Bullish</TableHead>
-                <TableHead>Bearish</TableHead>
-                <TableHead>Neutral</TableHead>
+                <TableHead>日期 / Date</TableHead>
+                <TableHead>股票代码 / Ticker</TableHead>
+                <TableHead>操作 / Action</TableHead>
+                <TableHead>数量 / Quantity</TableHead>
+                <TableHead>价格 / Price</TableHead>
+                <TableHead>持仓 / Shares</TableHead>
+                <TableHead>持仓价值 / Position Value</TableHead>
+                <TableHead>看涨 / Bullish</TableHead>
+                <TableHead>看跌 / Bearish</TableHead>
+                <TableHead>中性 / Neutral</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
@@ -162,11 +162,11 @@ function BacktestResults({ outputData }: { outputData: any }) {
     return (
       <Card className="bg-transparent mb-4">
         <CardHeader>
-          <CardTitle className="text-lg">Backtest Results</CardTitle>
+          <CardTitle className="text-lg">回测结果 / Backtest Results</CardTitle>
         </CardHeader>
         <CardContent>
           <div className="text-center py-8 text-muted-foreground">
-            Backtest completed. Performance metrics will appear here.
+            回测已完成。性能指标将显示在这里。 / Backtest completed. Performance metrics will appear here.
           </div>
         </CardContent>
       </Card>
@@ -184,11 +184,11 @@ function BacktestResults({ outputData }: { outputData: any }) {
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 mb-6">
           {/* Performance Metrics */}
           <div className="space-y-2">
-            <h4 className="font-medium">Performance Metrics</h4>
+            <h4 className="font-medium">性能指标 / Performance Metrics</h4>
             <div className="space-y-1 text-sm">
               {performance_metrics.sharpe_ratio !== null && performance_metrics.sharpe_ratio !== undefined && (
                 <div className="flex justify-between">
-                  <span>Sharpe Ratio:</span>
+                  <span>夏普比率 / Sharpe Ratio:</span>
                   <span className={cn("font-medium", performance_metrics.sharpe_ratio > 1 ? "text-green-500" : "text-red-500")}>
                     {performance_metrics.sharpe_ratio.toFixed(2)}
                   </span>
@@ -196,7 +196,7 @@ function BacktestResults({ outputData }: { outputData: any }) {
               )}
               {performance_metrics.sortino_ratio !== null && performance_metrics.sortino_ratio !== undefined && (
                 <div className="flex justify-between">
-                  <span>Sortino Ratio:</span>
+                  <span>索提诺比率 / Sortino Ratio:</span>
                   <span className={cn("font-medium", performance_metrics.sortino_ratio > 1 ? "text-green-500" : "text-red-500")}>
                     {performance_metrics.sortino_ratio.toFixed(2)}
                   </span>
@@ -204,7 +204,7 @@ function BacktestResults({ outputData }: { outputData: any }) {
               )}
               {performance_metrics.max_drawdown !== null && performance_metrics.max_drawdown !== undefined && (
                 <div className="flex justify-between">
-                  <span>Max Drawdown:</span>
+                  <span>最大回撤 / Max Drawdown:</span>
                   <span className="font-medium text-red-500">
                     {Math.abs(performance_metrics.max_drawdown).toFixed(2)}%
                   </span>
@@ -215,7 +215,7 @@ function BacktestResults({ outputData }: { outputData: any }) {
           
           {/* Portfolio Summary */}
           <div className="space-y-2">
-            <h4 className="font-medium">Portfolio Summary</h4>
+            <h4 className="font-medium">投资组合摘要 / Portfolio Summary</h4>
             <div className="space-y-1 text-sm">
               <div className="flex justify-between">
                 <span>Total Days:</span>
@@ -234,7 +234,7 @@ function BacktestResults({ outputData }: { outputData: any }) {
           
           {/* Exposure Metrics */}
           <div className="space-y-2">
-            <h4 className="font-medium">Exposure Metrics</h4>
+            <h4 className="font-medium">敞口指标 / Exposure Metrics</h4>
             <div className="space-y-1 text-sm">
               {performance_metrics.gross_exposure !== null && performance_metrics.gross_exposure !== undefined && (
                 <div className="flex justify-between">
@@ -263,15 +263,15 @@ function BacktestResults({ outputData }: { outputData: any }) {
         {/* Final Positions */}
         {final_portfolio.positions && (
           <div>
-            <h4 className="font-medium mb-2">Final Positions</h4>
+            <h4 className="font-medium mb-2">最终持仓 / Final Positions</h4>
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead>Ticker</TableHead>
-                  <TableHead>Long Shares</TableHead>
-                  <TableHead>Short Shares</TableHead>
-                  <TableHead>Long Cost Basis</TableHead>
-                  <TableHead>Short Cost Basis</TableHead>
+                  <TableHead>股票代码 / Ticker</TableHead>
+                  <TableHead>多头持仓 / Long Shares</TableHead>
+                  <TableHead>空头持仓 / Short Shares</TableHead>
+                  <TableHead>多头成本基础 / Long Cost Basis</TableHead>
+                  <TableHead>空头成本基础 / Short Cost Basis</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
@@ -342,7 +342,7 @@ function BacktestPerformanceMetrics({ agentData }: { agentData: Record<string, a
   return (
     <Card className="bg-transparent mb-4">
       <CardHeader>
-        <CardTitle className="text-lg">Performance</CardTitle>
+        <CardTitle className="text-lg">性能 / Performance</CardTitle>
       </CardHeader>
       <CardContent>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">

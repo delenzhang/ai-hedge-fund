@@ -13,7 +13,7 @@ function ProgressSection({ sortedAgents }: { sortedAgents: [string, any][] }) {
   return (
     <Card className="bg-transparent mb-4">
       <CardHeader>
-        <CardTitle className="text-lg">Progress</CardTitle>
+        <CardTitle className="text-lg">进度 / Progress</CardTitle>
       </CardHeader>
       <CardContent>
         <div className="space-y-1">
@@ -52,16 +52,16 @@ function SummarySection({ outputData }: { outputData: any }) {
   return (
     <Card className="bg-transparent mb-4">
       <CardHeader>
-        <CardTitle className="text-lg">Summary</CardTitle>
+        <CardTitle className="text-lg">摘要 / Summary</CardTitle>
       </CardHeader>
       <CardContent>
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>Ticker</TableHead>
-              <TableHead>Action</TableHead>
-              <TableHead>Quantity</TableHead>
-              <TableHead>Confidence</TableHead>
+              <TableHead>股票代码 / Ticker</TableHead>
+              <TableHead>操作 / Action</TableHead>
+              <TableHead>数量 / Quantity</TableHead>
+              <TableHead>置信度 / Confidence</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -106,7 +106,7 @@ function AnalysisResultsSection({ outputData }: { outputData: any }) {
   return (
     <Card className="bg-transparent">
       <CardHeader>
-        <CardTitle className="text-lg">Analysis</CardTitle>
+        <CardTitle className="text-lg">分析 / Analysis</CardTitle>
       </CardHeader>
       <CardContent>
         <Tabs value={selectedTicker} onValueChange={setSelectedTicker} className="w-full">
@@ -131,10 +131,10 @@ function AnalysisResultsSection({ outputData }: { outputData: any }) {
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead>Agent</TableHead>
-                      <TableHead>Signal</TableHead>
-                      <TableHead>Confidence</TableHead>
-                      <TableHead>Reasoning</TableHead>
+                      <TableHead>分析师 / Agent</TableHead>
+                      <TableHead>信号 / Signal</TableHead>
+                      <TableHead>置信度 / Confidence</TableHead>
+                      <TableHead>推理 / Reasoning</TableHead>
                     </TableRow>
                   </TableHeader>
                                      <TableBody>
@@ -172,8 +172,8 @@ function AnalysisResultsSection({ outputData }: { outputData: any }) {
                 <Table>
                   <TableHeader>
                     <TableRow>
-                      <TableHead>Property</TableHead>
-                      <TableHead>Value</TableHead>
+                      <TableHead>属性 / Property</TableHead>
+                      <TableHead>值 / Value</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>

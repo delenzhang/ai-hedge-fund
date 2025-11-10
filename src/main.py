@@ -32,13 +32,13 @@ def parse_hedge_fund_response(response):
     try:
         return json.loads(response)
     except json.JSONDecodeError as e:
-        print(f"JSON decoding error: {e}\nResponse: {repr(response)}")
+        print(f"JSON解码错误 / JSON decoding error: {e}\n响应 / Response: {repr(response)}")
         return None
     except TypeError as e:
-        print(f"Invalid response type (expected string, got {type(response).__name__}): {e}")
+        print(f"无效的响应类型（期望字符串，得到{type(response).__name__}） / Invalid response type (expected string, got {type(response).__name__}): {e}")
         return None
     except Exception as e:
-        print(f"Unexpected error while parsing response: {e}\nResponse: {repr(response)}")
+        print(f"解析响应时发生意外错误 / Unexpected error while parsing response: {e}\n响应 / Response: {repr(response)}")
         return None
 
 

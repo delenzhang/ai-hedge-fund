@@ -24,23 +24,23 @@ def add_common_args(
         "--tickers",
         type=str,
         required=require_tickers,
-        help="Comma-separated list of stock ticker symbols (e.g., AAPL,MSFT,GOOGL)",
+        help="股票代码列表，用逗号分隔（例如：AAPL,MSFT,GOOGL） / Comma-separated list of stock ticker symbols (e.g., AAPL,MSFT,GOOGL)",
     )
     if include_analyst_flags:
         parser.add_argument(
             "--analysts",
             type=str,
             required=False,
-            help="Comma-separated list of analysts to use (e.g., michael_burry,other_analyst)",
+            help="要使用的分析师列表，用逗号分隔（例如：michael_burry,other_analyst） / Comma-separated list of analysts to use (e.g., michael_burry,other_analyst)",
         )
         parser.add_argument(
             "--analysts-all",
             action="store_true",
-            help="Use all available analysts (overrides --analysts)",
+            help="使用所有可用分析师（覆盖--analysts） / Use all available analysts (overrides --analysts)",
         )
     if include_ollama:
-        parser.add_argument("--ollama", action="store_true", help="Use Ollama for local LLM inference")
-    parser.add_argument("--model", type=str, required=False, help="Model name to use (e.g., gpt-4o)")
+        parser.add_argument("--ollama", action="store_true", help="使用Ollama进行本地LLM推理 / Use Ollama for local LLM inference")
+    parser.add_argument("--model", type=str, required=False, help="要使用的模型名称（例如：gpt-4o） / Model name to use (e.g., gpt-4o)")
     return parser
 
 
@@ -53,13 +53,13 @@ def add_date_args(parser: argparse.ArgumentParser, *, default_months_back: int |
             "--end-date",
             type=str,
             default=datetime.now().strftime("%Y-%m-%d"),
-            help="End date in YYYY-MM-DD format",
+            help="结束日期，格式为YYYY-MM-DD / End date in YYYY-MM-DD format",
         )
         parser.add_argument(
             "--start-date",
             type=str,
             default=(datetime.now() - relativedelta(months=default_months_back)).strftime("%Y-%m-%d"),
-            help="Start date in YYYY-MM-DD format",
+            help="开始日期，格式为YYYY-MM-DD / Start date in YYYY-MM-DD format",
         )
     return parser
 
@@ -78,10 +78,10 @@ def select_analysts(flags: dict | None = None) -> list[str]:
         return [a.strip() for a in flags["analysts"].split(",") if a.strip()]
 
     choices = questionary.checkbox(
-        "Select your AI analysts.",
-        choices=[questionary.Choice(display, value=value) for display, value in ANALYST_ORDER],
-        instruction="\n\nInstructions: \n1. Press Space to select/unselect analysts.\n2. Press 'a' to select/unselect all.\n3. Press Enter when done.",
-        validate=lambda x: len(x) > 0 or "You must select at least one analyst.",
+        "选择您的AI分析师 / Select your AI analysts.",
+        choices=[questionary.Choice(display, value=value, checked=True) for display, value in ANALYST_ORDER],
+        instruction="\n\n使用说明 / Instructions: \n1. 按空格键选择/取消选择分析师 / Press Space to select/unselect analysts.\n2. 按'a'键全选/取消全选 / Press 'a' to select/unselect all.\n3. 按回车键完成 / Press Enter when done.",
+        validate=lambda x: len(x) > 0 or "您必须至少选择一个分析师 / You must select at least one analyst.",
         style=questionary.Style(
             [
                 ("checkbox-selected", "fg:green"),
@@ -93,11 +93,11 @@ def select_analysts(flags: dict | None = None) -> list[str]:
     ).ask()
 
     if not choices:
-        print("\n\nInterrupt received. Exiting...")
+        print("\n\n收到中断信号，正在退出... / Interrupt received. Exiting...")
         sys.exit(0)
 
     print(
-        f"\nSelected analysts: {', '.join(Fore.GREEN + c.title().replace('_', ' ') + Style.RESET_ALL for c in choices)}\n"
+        f"\n已选择的分析师 / Selected analysts: {', '.join(Fore.GREEN + c.title().replace('_', ' ') + Style.RESET_ALL for c in choices)}\n"
     )
     return choices
 
@@ -110,16 +110,16 @@ def select_model(use_ollama: bool, model_flag: str | None = None) -> tuple[str, 
         model = find_model_by_name(model_flag)
         if model:
             print(
-                f"\nUsing specified model: {Fore.CYAN}{model.provider.value}{Style.RESET_ALL} - {Fore.GREEN + Style.BRIGHT}{model.model_name}{Style.RESET_ALL}\n"
+                f"\n使用指定模型 / Using specified model: {Fore.CYAN}{model.provider.value}{Style.RESET_ALL} - {Fore.GREEN + Style.BRIGHT}{model.model_name}{Style.RESET_ALL}\n"
             )
             return model.model_name, model.provider.value
         else:
-            print(f"{Fore.RED}Model '{model_flag}' not found. Please select a model.{Style.RESET_ALL}")
+            print(f"{Fore.RED}未找到模型 '{model_flag}'，请选择一个模型 / Model '{model_flag}' not found. Please select a model.{Style.RESET_ALL}")
 
     if use_ollama:
-        print(f"{Fore.CYAN}Using Ollama for local LLM inference.{Style.RESET_ALL}")
+        print(f"{Fore.CYAN}使用Ollama进行本地LLM推理 / Using Ollama for local LLM inference.{Style.RESET_ALL}")
         model_name = questionary.select(
-            "Select your Ollama model:",
+            "选择您的Ollama模型 / Select your Ollama model:",
             choices=[questionary.Choice(display, value=value) for display, value, _ in OLLAMA_LLM_ORDER],
             style=questionary.Style(
                 [
@@ -132,26 +132,26 @@ def select_model(use_ollama: bool, model_flag: str | None = None) -> tuple[str, 
         ).ask()
 
         if not model_name:
-            print("\n\nInterrupt received. Exiting...")
+            print("\n\n收到中断信号，正在退出... / Interrupt received. Exiting...")
             sys.exit(0)
 
         if model_name == "-":
-            model_name = questionary.text("Enter the custom model name:").ask()
+            model_name = questionary.text("输入自定义模型名称 / Enter the custom model name:").ask()
             if not model_name:
-                print("\n\nInterrupt received. Exiting...")
+                print("\n\n收到中断信号，正在退出... / Interrupt received. Exiting...")
                 sys.exit(0)
 
         if not ensure_ollama_and_model(model_name):
-            print(f"{Fore.RED}Cannot proceed without Ollama and the selected model.{Style.RESET_ALL}")
+            print(f"{Fore.RED}无法在没有Ollama和所选模型的情况下继续 / Cannot proceed without Ollama and the selected model.{Style.RESET_ALL}")
             sys.exit(1)
 
         model_provider = ModelProvider.OLLAMA.value
         print(
-            f"\nSelected {Fore.CYAN}Ollama{Style.RESET_ALL} model: {Fore.GREEN + Style.BRIGHT}{model_name}{Style.RESET_ALL}\n"
+            f"\n已选择 {Fore.CYAN}Ollama{Style.RESET_ALL} 模型 / Selected {Fore.CYAN}Ollama{Style.RESET_ALL} model: {Fore.GREEN + Style.BRIGHT}{model_name}{Style.RESET_ALL}\n"
         )
     else:
         model_choice = questionary.select(
-            "Select your LLM model:",
+            "选择您的LLM模型 / Select your LLM model:",
             choices=[questionary.Choice(display, value=(name, provider)) for display, name, provider in LLM_ORDER],
             style=questionary.Style(
                 [
@@ -164,25 +164,25 @@ def select_model(use_ollama: bool, model_flag: str | None = None) -> tuple[str, 
         ).ask()
 
         if not model_choice:
-            print("\n\nInterrupt received. Exiting...")
+            print("\n\n收到中断信号，正在退出... / Interrupt received. Exiting...")
             sys.exit(0)
 
         model_name, model_provider = model_choice
 
         model_info = get_model_info(model_name, model_provider)
         if model_info and model_info.is_custom():
-            model_name = questionary.text("Enter the custom model name:").ask()
+            model_name = questionary.text("输入自定义模型名称 / Enter the custom model name:").ask()
             if not model_name:
-                print("\n\nInterrupt received. Exiting...")
+                print("\n\n收到中断信号，正在退出... / Interrupt received. Exiting...")
                 sys.exit(0)
 
         if model_info:
             print(
-                f"\nSelected {Fore.CYAN}{model_provider}{Style.RESET_ALL} model: {Fore.GREEN + Style.BRIGHT}{model_name}{Style.RESET_ALL}\n"
+                f"\n已选择 {Fore.CYAN}{model_provider}{Style.RESET_ALL} 模型 / Selected {Fore.CYAN}{model_provider}{Style.RESET_ALL} model: {Fore.GREEN + Style.BRIGHT}{model_name}{Style.RESET_ALL}\n"
             )
         else:
             model_provider = "Unknown"
-            print(f"\nSelected model: {Fore.GREEN + Style.BRIGHT}{model_name}{Style.RESET_ALL}\n")
+            print(f"\n已选择模型 / Selected model: {Fore.GREEN + Style.BRIGHT}{model_name}{Style.RESET_ALL}\n")
 
     return model_name, model_provider or ""
 
@@ -192,12 +192,12 @@ def resolve_dates(start_date: str | None, end_date: str | None, *, default_month
         try:
             datetime.strptime(start_date, "%Y-%m-%d")
         except ValueError:
-            raise ValueError("Start date must be in YYYY-MM-DD format")
+            raise ValueError("开始日期必须为YYYY-MM-DD格式 / Start date must be in YYYY-MM-DD format")
     if end_date:
         try:
             datetime.strptime(end_date, "%Y-%m-%d")
         except ValueError:
-            raise ValueError("End date must be in YYYY-MM-DD format")
+            raise ValueError("结束日期必须为YYYY-MM-DD格式 / End date must be in YYYY-MM-DD format")
 
     final_end = end_date or datetime.now().strftime("%Y-%m-%d")
     if start_date:
@@ -239,26 +239,27 @@ def parse_cli_inputs(
     add_date_args(parser, default_months_back=default_months_back)
 
     # Funding flags (standardized, with alias)
+    print('parse_cli_inputs >>>>>>>>>>>>>>>>>')
     parser.add_argument(
         "--initial-cash",
         "--initial-capital",
         dest="initial_cash",
         type=float,
         default=100000.0,
-        help="Initial cash position (alias: --initial-capital). Defaults to 100000.0",
+        help="初始现金头寸（别名：--initial-capital），默认为100000.0 / Initial cash position (alias: --initial-capital). Defaults to 100000.0",
     )
     parser.add_argument(
         "--margin-requirement",
         dest="margin_requirement",
         type=float,
         default=0.0,
-        help="Initial margin requirement ratio for shorts (e.g., 0.5 for 50%%). Defaults to 0.0",
+        help="空头初始保证金要求比率（例如：0.5表示50%%），默认为0.0 / Initial margin requirement ratio for shorts (e.g., 0.5 for 50%%). Defaults to 0.0",
     )
 
     if include_reasoning_flag:
-        parser.add_argument("--show-reasoning", action="store_true", help="Show reasoning from each agent")
+        parser.add_argument("--show-reasoning", action="store_true", help="显示每个分析师的推理过程 / Show reasoning from each agent")
     if include_graph_flag:
-        parser.add_argument("--show-agent-graph", action="store_true", help="Show the agent graph")
+        parser.add_argument("--show-agent-graph", action="store_true", help="显示代理图 / Show the agent graph")
 
     args = parser.parse_args()
 
