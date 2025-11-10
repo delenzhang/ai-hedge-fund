@@ -474,6 +474,8 @@ def generate_lynch_output(
                   "confidence": 0 to 100,
                   "reasoning": "string"
                 }}
+                
+                重要：请使用中文输出所有内容。
                 """,
             ),
             (

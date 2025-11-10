@@ -216,7 +216,9 @@ def generate_trading_decision(
                 "You are a portfolio manager.\n"
                 "Inputs per ticker: analyst signals and allowed actions with max qty (already validated).\n"
                 "Pick one allowed action per ticker and a quantity ≤ the max. "
-                "Keep reasoning very concise (max 100 chars). No cash or margin math. Return JSON only."
+                "Keep reasoning very concise (max 100 chars). No cash or margin math. Return JSON only.\n"
+                "\n"
+                "重要：请使用中文输出所有内容。"
             ),
             (
                 "human",

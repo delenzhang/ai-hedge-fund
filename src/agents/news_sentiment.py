@@ -80,6 +80,7 @@ def news_sentiment_agent(state: AgentState, agent_id: str = "news_sentiment_agen
                     f"Determine if sentiment is 'positive', 'negative', or 'neutral' for the stock {ticker} only. "
                     f"Also provide a confidence score for your prediction from 0 to 100. "
                     f"Respond in JSON format.\n\n"
+                    f"重要：请使用中文输出所有内容。\n\n"
                     f"Headline: {news.title}"
                 )
                 response = call_llm(prompt, Sentiment, agent_name=agent_id, state=state)

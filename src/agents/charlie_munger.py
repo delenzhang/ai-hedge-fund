@@ -825,7 +825,9 @@ def generate_munger_output(
         ("system",
          "You are Charlie Munger. Decide bullish, bearish, or neutral using only the facts. "
          "Return JSON only. Keep reasoning under 120 characters. "
-         "Use the provided confidence exactly; do not change it."),
+         "Use the provided confidence exactly; do not change it.\n"
+         "\n"
+         "重要：请使用中文输出所有内容。"),
         ("human",
          "Ticker: {ticker}\n"
          "Facts:\n{facts}\n"

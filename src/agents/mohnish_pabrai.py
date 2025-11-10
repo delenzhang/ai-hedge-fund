@@ -324,6 +324,8 @@ def generate_pabrai_output(
           - Avoid leverage, complexity, and fragile balance sheets.
 
             Provide candid, checklist-driven reasoning, with emphasis on capital preservation and expected mispricing.
+            
+            重要：请使用中文输出所有内容。
             """,
         ),
         (

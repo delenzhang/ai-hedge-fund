@@ -673,6 +673,8 @@ def generate_jhunjhunwala_output(
                 For example, if bearish: "The deteriorating margins and high debt levels concern me - this doesn't fit the profile of companies that build lasting value..."
 
                 Follow these guidelines strictly.
+                
+                重要：请使用中文输出所有内容。
                 """,
             ),
             (

@@ -382,7 +382,9 @@ def generate_damodaran_output(
                   ◦ Connect that story to key numerical drivers: revenue growth, margins, reinvestment, risk
                   ◦ Conclude with value: your FCFF DCF estimate, margin of safety, and relative valuation sanity checks
                   ◦ Highlight major uncertainties and how they affect value
-                Return ONLY the JSON specified below.""",
+                Return ONLY the JSON specified below.
+                
+                重要：请使用中文输出所有内容。""",
             ),
             (
                 "human",

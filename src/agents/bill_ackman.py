@@ -428,6 +428,8 @@ def generate_ackman_output(
             - Use a confident, analytic, and sometimes confrontational tone when discussing weaknesses or opportunities.
 
             Return your final recommendation (signal: bullish, neutral, or bearish) with a 0-100 confidence and a thorough reasoning section.
+            
+            重要：请使用中文输出所有内容。
             """
         ),
         (
