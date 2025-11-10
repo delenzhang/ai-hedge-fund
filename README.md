@@ -105,6 +105,7 @@ poetry install
 #### Run the AI Hedge Fund
 ```bash
 poetry run python src/main.py --ticker AAPL,MSFT,NVDA
+poetry run python src/main.py --ticker PYPL --show-reasoning --analysts-all
 ```
 
 You can also specify a `--ollama` flag to run the AI hedge fund using local LLMs.

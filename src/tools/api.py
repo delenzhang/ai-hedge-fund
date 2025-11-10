@@ -251,24 +251,39 @@ def search_line_items(
     cached_data = _cache.get_line_items(ticker, period)
     
     # Common line items list for initial fetch (comprehensive list)
+
     common_line_items = [
-        "revenue", "net_income", "earnings_per_share", "free_cash_flow",
-        "operating_income", "operating_margin", "gross_profit", "gross_margin",
-        "ebit", "ebitda", "total_debt", "cash_and_equivalents",
-        "current_assets", "current_liabilities", "total_assets", "total_liabilities",
-        "shareholders_equity", "working_capital", "capital_expenditure",
-        "depreciation_and_amortization", "interest_expense", "research_and_development",
-        "dividends_and_other_cash_distributions", "outstanding_shares",
-        "issuance_or_purchase_of_equity_shares", "total_revenue", "cost_of_revenue",
-        "operating_expenses", "income_tax_expense", "net_income_attributable_to_common_stockholders",
-        "basic_earnings_per_share", "diluted_earnings_per_share", "book_value_per_share",
-        "return_on_equity", "return_on_assets", "debt_to_equity", "current_ratio",
-        "quick_ratio", "inventory", "accounts_receivable", "accounts_payable",
-        "long_term_debt", "short_term_debt", "intangible_assets", "goodwill",
-        "property_plant_and_equipment", "accumulated_depreciation", "retained_earnings",
-        "common_stock", "preferred_stock", "treasury_stock", "other_comprehensive_income",
-        "operating_cash_flow", "investing_cash_flow", "financing_cash_flow",
-        "net_change_in_cash", "stock_based_compensation", "amortization_of_intangibles",
+                "ebit",
+                "interest_expense",
+                "capital_expenditure",
+                "depreciation_and_amortization",
+                "outstanding_shares",
+                "net_income",
+                "total_debt",
+                "earnings_per_share", 
+                "revenue", 
+                "book_value_per_share", 
+                "total_assets", 
+                "total_liabilities", 
+                "current_assets", 
+                "current_liabilities",
+                "dividends_and_other_cash_distributions",
+                "operating_margin",
+                "debt_to_equity",
+                "free_cash_flow",
+                "gross_margin",
+                "research_and_development",
+                "operating_expense",
+                "operating_income",
+                "return_on_invested_capital",
+                "cash_and_equivalents",
+                "shareholders_equity",
+                "goodwill_and_intangible_assets",
+                "issuance_or_purchase_of_equity_shares",
+                "gross_profit",
+                "ebitda",
+                "working_capital",      
+            
     ]
     
     # If cache doesn't exist, fetch all available line items
@@ -280,7 +295,7 @@ def search_line_items(
 
         url = "https://api.financialdatasets.ai/financials/search/line-items"
 
-        # First fetch: get all common line items with large limit and today's date
+        # First fetch: try with common_line_items
         body = {
             "tickers": [ticker],
             "line_items": common_line_items,
@@ -289,12 +304,10 @@ def search_line_items(
             "limit": 1000,  # Large limit to get all available periods
         }
         response = _make_api_request(url, headers, method="POST", json_data=body)
+        
+        # If all attempts failed, raise error
         if response.status_code != 200:
-            # If failed, try with empty line_items to get all available
-            body["line_items"] = []
-            response = _make_api_request(url, headers, method="POST", json_data=body)
-            if response.status_code != 200:
-                raise Exception(f"Error fetching data: {ticker} - {response.status_code} - {response.text}")
+            raise Exception(f"Error fetching data: {ticker} - {response.status_code} - {response.text}")
         
         data = response.json()
         response_model = LineItemResponse(**data)

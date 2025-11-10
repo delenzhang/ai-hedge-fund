@@ -67,3 +67,4 @@ outputs/
 app/backend/alembic/versions/__pycache__/
 
 .cache
+report

@@ -265,13 +265,20 @@ def parse_cli_inputs(
 
     # Normalize parsed values
     tickers = parse_tickers(getattr(args, "tickers", None))
-    selected_analysts = select_analysts({
+    
+    select_analysts_args = {
         "analysts_all": getattr(args, "analysts_all", False),
         "analysts": getattr(args, "analysts", None),
-    })
-    model_name, model_provider = select_model(getattr(args, "ollama", False), getattr(args, "model", None))
-    start_date, end_date = resolve_dates(getattr(args, "start_date", None), getattr(args, "end_date", None), default_months_back=default_months_back)
+    }
+     
 
+    selected_analysts = select_analysts(select_analysts_args)
+
+    print(selected_analysts, select_analysts_args)
+
+    # model_name, model_provider = select_model(getattr(args, "ollama", False), getattr(args, "model", None))
+    (model_name, model_provider) = ('deepseek-v3', 'OpenAI')
+    start_date, end_date = resolve_dates(getattr(args, "start_date", None), getattr(args, "end_date", None), default_months_back=default_months_back)
     return CLIInputs(
         tickers=tickers,
         selected_analysts=selected_analysts,
