@@ -31,7 +31,6 @@ class ModelProvider(str, Enum):
     GIGACHAT = "GigaChat"
     AZURE_OPENAI = "Azure OpenAI"
     XAI = "xAI"
-    BASEURL= 'http://ftp-ai.woa.com/api/llmproxy'
 
 
 class LLMModel(BaseModel):

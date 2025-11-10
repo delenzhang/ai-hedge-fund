@@ -3,6 +3,7 @@ import os
 import pandas as pd
 import requests
 import time
+from decimal import Decimal
 from longport.openapi import QuoteContext, Config, Period, AdjustType
 
 from src.data.cache import get_cache
@@ -20,9 +21,10 @@ from src.data.models import (
     CompanyFactsResponse,
 )
 
+from src.tools.longbridge import _get_longbridge_ctx
+
 # Global cache instance
 _cache = get_cache()
-
 
 def _make_api_request(url: str, headers: dict, method: str = "GET", json_data: dict = None, max_retries: int = 3) -> requests.Response:
     """
@@ -57,7 +59,7 @@ def _make_api_request(url: str, headers: dict, method: str = "GET", json_data: d
         # Return the response (whether success, other errors, or final 429)
         return response
 
-def get_prices(ticker: str, start_date: str, end_date: str) -> list[Price]:
+def get_prices(ticker: str, start_date: str, end_date: str, api_key: str = None) -> list[Price]:
     """
     从缓存或长桥API获取股票价格数据。
     
@@ -87,8 +89,8 @@ def get_prices(ticker: str, start_date: str, end_date: str) -> list[Price]:
         ctx = _get_longbridge_ctx()
         
         # 解析日期
-        start_dt = datetime.strptime(start_date, "%Y-%m-%d")
-        end_dt = datetime.strptime(end_date, "%Y-%m-%d")
+        start_dt = datetime.datetime.strptime(start_date, "%Y-%m-%d")
+        end_dt = datetime.datetime.strptime(end_date, "%Y-%m-%d")
         
         # 计算交易日数量（每年约252个交易日）
         # 添加缓冲以确保获取到范围内的所有数据
