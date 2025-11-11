@@ -77,14 +77,31 @@ def get_prices(ticker: str, start_date: str, end_date: str, api_key: str = None)
     Raises:
         Exception: 当从长桥API获取数据失败时
     """
-    # 首先检查缓存
-    if cached_data := _cache.get_prices(ticker):
-        # 按日期范围过滤缓存数据并转换为 Price 对象
-        filtered_data = [Price(**price) for price in cached_data if start_date <= price["time"] <= end_date]
-        if filtered_data:
+    today = datetime.datetime.now().strftime("%Y-%m-%d")
+    
+    # Check cache first
+    cached_data = _cache.get_prices(ticker)
+    # Use last_updated_date (query date) instead of data's latest date
+    latest_cached_date = _cache.get_last_updated_date("prices", ticker)
+    
+    # Check if we need to refresh cache
+    # Refresh if cache doesn't exist or last query date is not today
+    need_refresh = latest_cached_date is None or latest_cached_date != today
+    
+    # If cache exists and doesn't need refresh, record cache hit and use cache
+    if not need_refresh:
+        _cache.record_cache_hit("prices")
+        if cached_data:
+            # Filter cached data by date range
+            filtered_data = [Price(**price) for price in cached_data if start_date <= price["time"] <= end_date]
             return filtered_data
-
-    # 如果缓存中没有数据或数据不在范围内，从长桥API获取
+        else:
+            # Cache was updated today but has no data, return empty list
+            return []
+    
+    # If cache needs refresh, fetch from API
+    _cache.record_api_call("prices")
+    
     try:
         ctx = _get_longbridge_ctx()
         
@@ -142,8 +159,8 @@ def get_prices(ticker: str, start_date: str, end_date: str, api_key: str = None)
         if not prices:
             return []
 
-        # 将结果缓存为字典格式
-        _cache.set_prices(ticker, [p.model_dump() for p in prices])
+        # 将结果缓存为字典格式并更新 last_updated_date
+        _cache.set_prices(ticker, [p.model_dump() for p in prices], update_date=today)
         return prices
         
     except Exception as e:

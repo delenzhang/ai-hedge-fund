@@ -180,11 +180,14 @@ class Cache:
         """Get cached price data if available."""
         return self._load_from_file("prices", ticker)
 
-    def set_prices(self, ticker: str, data: list[dict[str, any]]):
+    def set_prices(self, ticker: str, data: list[dict[str, any]], update_date: str = None):
         """Append new price data to cache."""
         existing = self.get_prices(ticker)
         merged = self._merge_data(existing, data, key_field="time")
         self._save_to_file("prices", ticker, merged)
+        # Update last_updated date if provided
+        if update_date:
+            self.set_last_updated_date("prices", ticker, update_date)
 
     def get_financial_metrics(self, ticker: str, period: str = "ttm") -> list[dict[str, any]] | None:
         """Get cached financial metrics if available."""

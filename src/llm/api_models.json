@@ -1,7 +1,7 @@
 [
   {
-    "display_name": "qwen3-235b-a22b-instruct-2507",
-    "model_name": "qwen3-235b-a22b-instruct-2507",
+    "display_name": "qwen3-235b-a22b",
+    "model_name": "qwen3-235b-a22b",
     "provider": "OpenAI"
   },
   {
