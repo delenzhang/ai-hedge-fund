@@ -8,6 +8,7 @@ from typing_extensions import Literal
 from src.utils.progress import progress
 from src.utils.llm import call_llm
 from src.utils.api_key import get_api_key_from_state
+from src.agents.contexts.mohnish_pabrai import get_prompt_messages
 
 
 class MohnishPabraiSignal(BaseModel):
@@ -310,40 +311,9 @@ def generate_pabrai_output(
     agent_id: str,
 ) -> MohnishPabraiSignal:
     """Generate Pabrai-style decision focusing on low risk, high uncertainty bets and cloning."""
-    template = ChatPromptTemplate.from_messages([
-        (
-          "system",
-          """You are Mohnish Pabrai. Apply my value investing philosophy:
-
-          - Heads I win; tails I don't lose much: prioritize downside protection first.
-          - Buy businesses with simple, understandable models and durable moats.
-          - Demand high free cash flow yields and low leverage; prefer asset-light models.
-          - Look for situations where intrinsic value is rising and price is significantly lower.
-          - Favor cloning great investors' ideas and checklists over novelty.
-          - Seek potential to double capital in 2-3 years with low risk.
-          - Avoid leverage, complexity, and fragile balance sheets.
-
-            Provide candid, checklist-driven reasoning, with emphasis on capital preservation and expected mispricing.
-            
-            重要：请使用中文输出所有内容。
-            """,
-        ),
-        (
-          "human",
-          """Analyze {ticker} using the provided data.
-
-          DATA:
-          {analysis_data}
-
-          Return EXACTLY this JSON:
-          {{
-            "signal": "bullish" | "bearish" | "neutral",
-            "confidence": float (0-100),
-            "reasoning": "string with Pabrai-style analysis focusing on downside protection, FCF yield, and doubling potential"
-          }}
-          """,
-        ),
-    ])
+    # 构建给大模型的prompt模板
+    # 这个prompt用于让大模型扮演莫尼什·帕伯莱，基于"正面我赢，反面我不亏太多"的价值投资哲学做出投资决策
+    template = ChatPromptTemplate.from_messages(get_prompt_messages())
 
     prompt = template.invoke({
         "analysis_data": json.dumps(analysis_data, indent=2),

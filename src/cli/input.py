@@ -20,11 +20,16 @@ def add_common_args(
     include_analyst_flags: bool = True,
     include_ollama: bool = True,
 ) -> argparse.ArgumentParser:
-    parser.add_argument(
+    tickers_group = parser.add_mutually_exclusive_group(required=require_tickers)
+    tickers_group.add_argument(
         "--tickers",
         type=str,
-        required=require_tickers,
         help="股票代码列表，用逗号分隔（例如：AAPL,MSFT,GOOGL） / Comma-separated list of stock ticker symbols (e.g., AAPL,MSFT,GOOGL)",
+    )
+    tickers_group.add_argument(
+        "--tickers-all",
+        action="store_true",
+        help="分析所有在 initial_realized_gains 中定义的股票代码 / Analyze all tickers defined in initial_realized_gains",
     )
     if include_analyst_flags:
         parser.add_argument(
@@ -221,6 +226,7 @@ class CLIInputs:
     margin_requirement: float
     show_reasoning: bool = False
     show_agent_graph: bool = False
+    tickers_all: bool = False
     raw_args: Optional[argparse.Namespace] = None
 
 
@@ -239,20 +245,19 @@ def parse_cli_inputs(
     add_date_args(parser, default_months_back=default_months_back)
 
     # Funding flags (standardized, with alias)
-    print('parse_cli_inputs >>>>>>>>>>>>>>>>>')
     parser.add_argument(
         "--initial-cash",
         "--initial-capital",
         dest="initial_cash",
         type=float,
-        default=100000.0,
+        default=10000.0,
         help="初始现金头寸（别名：--initial-capital），默认为100000.0 / Initial cash position (alias: --initial-capital). Defaults to 100000.0",
     )
     parser.add_argument(
         "--margin-requirement",
         dest="margin_requirement",
         type=float,
-        default=0.0,
+        default=0.5,
         help="空头初始保证金要求比率（例如：0.5表示50%%），默认为0.0 / Initial margin requirement ratio for shorts (e.g., 0.5 for 50%%). Defaults to 0.0",
     )
 
@@ -264,7 +269,15 @@ def parse_cli_inputs(
     args = parser.parse_args()
 
     # Normalize parsed values
+    tickers_all = getattr(args, "tickers_all", False)
     tickers = parse_tickers(getattr(args, "tickers", None))
+    
+    # 如果使用 --tickers-all，需要从 mycount 导入 initial_realized_gains
+    if tickers_all:
+        from src.mycount import initial_realized_gains
+        tickers = list(initial_realized_gains.keys())
+        if not tickers:
+            raise ValueError("initial_realized_gains 为空，无法使用 --tickers-all / initial_realized_gains is empty, cannot use --tickers-all")
     
     select_analysts_args = {
         "analysts_all": getattr(args, "analysts_all", False),
@@ -290,6 +303,7 @@ def parse_cli_inputs(
         margin_requirement=getattr(args, "margin_requirement", 0.0),
         show_reasoning=getattr(args, "show_reasoning", False),
         show_agent_graph=getattr(args, "show_agent_graph", False),
+        tickers_all=tickers_all,
         raw_args=args,
     )
 

@@ -8,6 +8,7 @@ from src.tools.api import get_financial_metrics, get_market_cap, search_line_ite
 from src.utils.llm import call_llm
 from src.utils.progress import progress
 from src.utils.api_key import get_api_key_from_state
+from src.agents.contexts.warren_buffett import get_prompt_messages
 
 
 class WarrenBuffettSignal(BaseModel):
@@ -766,49 +767,9 @@ def generate_buffett_output(
         "margin_of_safety": analysis_data.get("margin_of_safety"),
     }
 
-    template = ChatPromptTemplate.from_messages(
-        [
-            (
-                "system",
-                "You are Warren Buffett. Decide bullish, bearish, or neutral using only the provided facts.\n"
-                "\n"
-                "Checklist for decision:\n"
-                "- Circle of competence\n"
-                "- Competitive moat\n"
-                "- Management quality\n"
-                "- Financial strength\n"
-                "- Valuation vs intrinsic value\n"
-                "- Long-term prospects\n"
-                "\n"
-                "Signal rules:\n"
-                "- Bullish: strong business AND margin_of_safety > 0.\n"
-                "- Bearish: poor business OR clearly overvalued.\n"
-                "- Neutral: good business but margin_of_safety <= 0, or mixed evidence.\n"
-                "\n"
-                "Confidence scale:\n"
-                "- 90-100%: Exceptional business within my circle, trading at attractive price\n"
-                "- 70-89%: Good business with decent moat, fair valuation\n"
-                "- 50-69%: Mixed signals, would need more information or better price\n"
-                "- 30-49%: Outside my expertise or concerning fundamentals\n"
-                "- 10-29%: Poor business or significantly overvalued\n"
-                "\n"
-                "Keep reasoning under 120 characters. Do not invent data. Return JSON only.\n"
-                "\n"
-                "重要：请使用中文输出所有内容。"
-            ),
-            (
-                "human",
-                "Ticker: {ticker}\n"
-                "Facts:\n{facts}\n\n"
-                "Return exactly:\n"
-                "{{\n"
-                '  "signal": "bullish" | "bearish" | "neutral",\n'
-                '  "confidence": int,\n'
-                '  "reasoning": "short justification"\n'
-                "}}"
-            ),
-        ]
-    )
+    # 构建给大模型的prompt模板
+    # 这个prompt用于让大模型扮演沃伦·巴菲特，基于提供的财务数据做出投资决策
+    template = ChatPromptTemplate.from_messages(get_prompt_messages())
 
     prompt = template.invoke({
         "facts": json.dumps(facts, separators=(",", ":"), ensure_ascii=False),

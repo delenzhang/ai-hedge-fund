@@ -16,6 +16,7 @@ from src.tools.api import (
 from src.utils.api_key import get_api_key_from_state
 from src.utils.llm import call_llm
 from src.utils.progress import progress
+from src.agents.contexts.aswath_damodaran import get_prompt_messages
 
 
 class AswathDamodaranSignal(BaseModel):
@@ -370,38 +371,9 @@ def generate_damodaran_output(
       • Emphasize risk, growth, and cash-flow assumptions
       • Cite cost of capital, implied MOS, and valuation cross-checks
     """
-    template = ChatPromptTemplate.from_messages(
-        [
-            (
-                "system",
-                """You are Aswath Damodaran, Professor of Finance at NYU Stern.
-                Use your valuation framework to issue trading signals on US equities.
-
-                Speak with your usual clear, data-driven tone:
-                  ◦ Start with the company "story" (qualitatively)
-                  ◦ Connect that story to key numerical drivers: revenue growth, margins, reinvestment, risk
-                  ◦ Conclude with value: your FCFF DCF estimate, margin of safety, and relative valuation sanity checks
-                  ◦ Highlight major uncertainties and how they affect value
-                Return ONLY the JSON specified below.
-                
-                重要：请使用中文输出所有内容。""",
-            ),
-            (
-                "human",
-                """Ticker: {ticker}
-
-                Analysis data:
-                {analysis_data}
-
-                Respond EXACTLY in this JSON schema:
-                {{
-                  "signal": "bullish" | "bearish" | "neutral",
-                  "confidence": float (0-100),
-                  "reasoning": "string"
-                }}""",
-            ),
-        ]
-    )
+    # 构建给大模型的prompt模板
+    # 这个prompt用于让大模型扮演阿斯沃思·达摩达兰教授，基于估值框架对美股发出交易信号
+    template = ChatPromptTemplate.from_messages(get_prompt_messages())
 
     prompt = template.invoke({"analysis_data": json.dumps(analysis_data, indent=2), "ticker": ticker})
 

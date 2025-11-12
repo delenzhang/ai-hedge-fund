@@ -8,5 +8,15 @@
     "display_name": "deepseek-v3",
     "model_name": "deepseek-v3",
     "provider": "OpenAI"
+  },
+  {
+    "display_name": "deepseek-r1",
+    "model_name": "deepseek-r1",
+    "provider": "OpenAI"
+  },
+  {
+    "display_name": "gpt-5",
+    "model_name": "gpt-5",
+    "provider": "OpenAI"
   }
 ]

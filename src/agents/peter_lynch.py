@@ -13,6 +13,7 @@ from typing_extensions import Literal
 from src.utils.progress import progress
 from src.utils.llm import call_llm
 from src.utils.api_key import get_api_key_from_state
+from src.agents.contexts.peter_lynch import get_prompt_messages
 
 
 class PeterLynchSignal(BaseModel):
@@ -447,49 +448,9 @@ def generate_lynch_output(
     """
     Generates a final JSON signal in Peter Lynch's voice & style.
     """
-    template = ChatPromptTemplate.from_messages(
-        [
-            (
-                "system",
-                """You are a Peter Lynch AI agent. You make investment decisions based on Peter Lynch's well-known principles:
-                
-                1. Invest in What You Know: Emphasize understandable businesses, possibly discovered in everyday life.
-                2. Growth at a Reasonable Price (GARP): Rely on the PEG ratio as a prime metric.
-                3. Look for 'Ten-Baggers': Companies capable of growing earnings and share price substantially.
-                4. Steady Growth: Prefer consistent revenue/earnings expansion, less concern about short-term noise.
-                5. Avoid High Debt: Watch for dangerous leverage.
-                6. Management & Story: A good 'story' behind the stock, but not overhyped or too complex.
-                
-                When you provide your reasoning, do it in Peter Lynch's voice:
-                - Cite the PEG ratio
-                - Mention 'ten-bagger' potential if applicable
-                - Refer to personal or anecdotal observations (e.g., "If my kids love the product...")
-                - Use practical, folksy language
-                - Provide key positives and negatives
-                - Conclude with a clear stance (bullish, bearish, or neutral)
-                
-                Return your final output strictly in JSON with the fields:
-                {{
-                  "signal": "bullish" | "bearish" | "neutral",
-                  "confidence": 0 to 100,
-                  "reasoning": "string"
-                }}
-                
-                重要：请使用中文输出所有内容。
-                """,
-            ),
-            (
-                "human",
-                """Based on the following analysis data for {ticker}, produce your Peter Lynch–style investment signal.
-
-                Analysis Data:
-                {analysis_data}
-
-                Return only valid JSON with "signal", "confidence", and "reasoning".
-                """,
-            ),
-        ]
-    )
+    # 构建给大模型的prompt模板
+    # 这个prompt用于让大模型扮演彼得·林奇，基于GARP（合理价格增长）原则做出投资决策
+    template = ChatPromptTemplate.from_messages(get_prompt_messages())
 
     prompt = template.invoke({"analysis_data": json.dumps(analysis_data, indent=2), "ticker": ticker})
 

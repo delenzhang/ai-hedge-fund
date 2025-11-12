@@ -73,15 +73,23 @@ def news_sentiment_agent(state: AgentState, agent_id: str = "news_sentiment_agen
                 # but this is more expensive and requires extracting the text from the article.
                 # Note: this is an opportunity for improvement!
                 progress.update_status(agent_id, ticker, f"Analyzing sentiment for article {idx + 1} of {len(articles_to_analyze)}")
+                # 构建给大模型的prompt
+                # 这个prompt用于让大模型分析新闻标题的情感，判断对股票的影响是正面、负面还是中性
                 prompt = (
                     f"Please analyze the sentiment of the following news headline "
+                    # 请分析以下新闻标题的情感
                     f"with the following context: "
+                    # 在以下上下文中：
                     f"The stock is {ticker}. "
+                    # 股票代码是{ticker}
                     f"Determine if sentiment is 'positive', 'negative', or 'neutral' for the stock {ticker} only. "
+                    # 确定对股票{ticker}的情感是'正面'、'负面'还是'中性'
                     f"Also provide a confidence score for your prediction from 0 to 100. "
+                    # 同时提供0到100的置信度分数
                     f"Respond in JSON format.\n\n"
+                    # 以JSON格式回复
                     f"重要：请使用中文输出所有内容。\n\n"
-                    f"Headline: {news.title}"
+                    f"Headline: {news.title}"  # 标题：新闻标题内容
                 )
                 response = call_llm(prompt, Sentiment, agent_name=agent_id, state=state)
                 if response:

@@ -8,6 +8,7 @@ from pydantic import BaseModel, Field
 from typing_extensions import Literal
 from src.utils.progress import progress
 from src.utils.llm import call_llm
+from src.agents.contexts.portfolio_manager import get_prompt_messages
 
 
 class PortfolioDecision(BaseModel):
@@ -208,31 +209,9 @@ def generate_trading_decision(
     compact_signals = _compact_signals({t: signals_by_ticker.get(t, {}) for t in tickers_for_llm})
     compact_allowed = {t: allowed_actions_full[t] for t in tickers_for_llm}
 
-    # Minimal prompt template
-    template = ChatPromptTemplate.from_messages(
-        [
-            (
-                "system",
-                "You are a portfolio manager.\n"
-                "Inputs per ticker: analyst signals and allowed actions with max qty (already validated).\n"
-                "Pick one allowed action per ticker and a quantity ≤ the max. "
-                "Keep reasoning very concise (max 100 chars). No cash or margin math. Return JSON only.\n"
-                "\n"
-                "重要：请使用中文输出所有内容。"
-            ),
-            (
-                "human",
-                "Signals:\n{signals}\n\n"
-                "Allowed:\n{allowed}\n\n"
-                "Format:\n"
-                "{{\n"
-                '  "decisions": {{\n'
-                '    "TICKER": {{"action":"...","quantity":int,"confidence":int,"reasoning":"..."}}\n'
-                "  }}\n"
-                "}}"
-            ),
-        ]
-    )
+    # 构建给大模型的prompt模板
+    # 这个prompt用于让大模型作为投资组合经理，基于分析师信号和允许的操作做出交易决策
+    template = ChatPromptTemplate.from_messages(get_prompt_messages())
 
     prompt_data = {
         "signals": json.dumps(compact_signals, separators=(",", ":"), ensure_ascii=False),

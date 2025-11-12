@@ -8,6 +8,7 @@ from typing_extensions import Literal
 from src.utils.progress import progress
 from src.utils.llm import call_llm
 from src.utils.api_key import get_api_key_from_state
+from src.agents.contexts.charlie_munger import get_prompt_messages
 
 class CharlieMungerSignal(BaseModel):
     signal: Literal["bullish", "bearish", "neutral"]
@@ -821,24 +822,9 @@ def generate_munger_output(
     confidence_hint: int,
 ) -> CharlieMungerSignal:
     facts_bundle = make_munger_facts_bundle(analysis_data)
-    template = ChatPromptTemplate.from_messages([
-        ("system",
-         "You are Charlie Munger. Decide bullish, bearish, or neutral using only the facts. "
-         "Return JSON only. Keep reasoning under 120 characters. "
-         "Use the provided confidence exactly; do not change it.\n"
-         "\n"
-         "重要：请使用中文输出所有内容。"),
-        ("human",
-         "Ticker: {ticker}\n"
-         "Facts:\n{facts}\n"
-         "Confidence: {confidence}\n"
-         "Return exactly:\n"
-         "{{\n"  # escaped {
-         '  "signal": "bullish" | "bearish" | "neutral",\n'
-         f'  "confidence": {confidence_hint},\n'
-         '  "reasoning": "short justification"\n'
-         "}}")  # escaped }
-    ])
+    # 构建给大模型的prompt模板
+    # 这个prompt用于让大模型扮演查理·芒格，基于事实做出简洁的投资决策
+    template = ChatPromptTemplate.from_messages(get_prompt_messages(confidence_hint))
 
     prompt = template.invoke({
         "ticker": ticker,

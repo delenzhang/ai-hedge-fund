@@ -295,36 +295,36 @@ def search_line_items(
 
         # Common line items list for initial fetch (comprehensive list)
         common_line_items = [
-            "ebit",
-            "interest_expense",
-            "capital_expenditure",
-            "depreciation_and_amortization",
-            "outstanding_shares",
-            "net_income",
-            "total_debt",
-            "earnings_per_share", 
-            "revenue", 
-            "book_value_per_share", 
-            "total_assets", 
-            "total_liabilities", 
-            "current_assets", 
-            "current_liabilities",
-            "dividends_and_other_cash_distributions",
-            "operating_margin",
-            "debt_to_equity",
-            "free_cash_flow",
-            "gross_margin",
-            "research_and_development",
-            "operating_expense",
-            "operating_income",
-            "return_on_invested_capital",
-            "cash_and_equivalents",
-            "shareholders_equity",
-            "goodwill_and_intangible_assets",
-            "issuance_or_purchase_of_equity_shares",
-            "gross_profit",
-            "ebitda",
-            "working_capital",   
+            "ebit",  # 息税前利润 / Earnings Before Interest and Taxes
+            "interest_expense",  # 利息支出
+            "capital_expenditure",  # 资本支出
+            "depreciation_and_amortization",  # 折旧和摊销
+            "outstanding_shares",  # 流通股数
+            "net_income",  # 净利润
+            "total_debt",  # 总负债
+            "earnings_per_share",  # 每股收益
+            "revenue",  # 营业收入
+            "book_value_per_share",  # 每股账面价值
+            "total_assets",  # 总资产
+            "total_liabilities",  # 总负债
+            "current_assets",  # 流动资产
+            "current_liabilities",  # 流动负债
+            "dividends_and_other_cash_distributions",  # 股息和其他现金分配
+            "operating_margin",  # 营业利润率
+            "debt_to_equity",  # 负债权益比
+            "free_cash_flow",  # 自由现金流
+            "gross_margin",  # 毛利率
+            "research_and_development",  # 研发费用
+            "operating_expense",  # 营业费用
+            "operating_income",  # 营业利润
+            "return_on_invested_capital",  # 投资资本回报率
+            "cash_and_equivalents",  # 现金及现金等价物
+            "shareholders_equity",  # 股东权益
+            "goodwill_and_intangible_assets",  # 商誉和无形资产
+            "issuance_or_purchase_of_equity_shares",  # 发行或回购股票
+            "gross_profit",  # 毛利润
+            "ebitda",  # 息税折旧摊销前利润 / Earnings Before Interest, Taxes, Depreciation and Amortization
+            "working_capital",  # 营运资本（流动资产 - 流动负债）   
         ]
 
         # First fetch: get all common line items with large limit and today's date
@@ -524,6 +524,8 @@ def get_company_news(
             url = f"https://api.financialdatasets.ai/news/?ticker={ticker}&end_date={current_end_date}&start_date={one_year_ago}&limit=1000"
 
             response = _make_api_request(url, headers)
+            if response.status_code == 404:
+                break;
             if response.status_code != 200:
                 raise Exception(f"Error fetching data: {ticker} - {response.status_code} - {response.text}")
 

@@ -8,6 +8,7 @@ from typing_extensions import Literal
 from src.utils.progress import progress
 from src.utils.llm import call_llm
 from src.utils.api_key import get_api_key_from_state
+from src.agents.contexts.cathie_wood import get_prompt_messages
 
 
 class CathieWoodSignal(BaseModel):
@@ -369,57 +370,9 @@ def generate_cathie_wood_output(
     """
     Generates investment decisions in the style of Cathie Wood.
     """
-    template = ChatPromptTemplate.from_messages(
-        [
-            (
-                "system",
-                """You are a Cathie Wood AI agent, making investment decisions using her principles:
-
-            1. Seek companies leveraging disruptive innovation.
-            2. Emphasize exponential growth potential, large TAM.
-            3. Focus on technology, healthcare, or other future-facing sectors.
-            4. Consider multi-year time horizons for potential breakthroughs.
-            5. Accept higher volatility in pursuit of high returns.
-            6. Evaluate management's vision and ability to invest in R&D.
-
-            Rules:
-            - Identify disruptive or breakthrough technology.
-            - Evaluate strong potential for multi-year revenue growth.
-            - Check if the company can scale effectively in a large market.
-            - Use a growth-biased valuation approach.
-            - Provide a data-driven recommendation (bullish, bearish, or neutral).
-            
-            When providing your reasoning, be thorough and specific by:
-            1. Identifying the specific disruptive technologies/innovations the company is leveraging
-            2. Highlighting growth metrics that indicate exponential potential (revenue acceleration, expanding TAM)
-            3. Discussing the long-term vision and transformative potential over 5+ year horizons
-            4. Explaining how the company might disrupt traditional industries or create new markets
-            5. Addressing R&D investment and innovation pipeline that could drive future growth
-            6. Using Cathie Wood's optimistic, future-focused, and conviction-driven voice
-            
-            For example, if bullish: "The company's AI-driven platform is transforming the $500B healthcare analytics market, with evidence of platform adoption accelerating from 40% to 65% YoY. Their R&D investments of 22% of revenue are creating a technological moat that positions them to capture a significant share of this expanding market. The current valuation doesn't reflect the exponential growth trajectory we expect as..."
-            For example, if bearish: "While operating in the genomics space, the company lacks truly disruptive technology and is merely incrementally improving existing techniques. R&D spending at only 8% of revenue signals insufficient investment in breakthrough innovation. With revenue growth slowing from 45% to 20% YoY, there's limited evidence of the exponential adoption curve we look for in transformative companies..."
-            
-            重要：请使用中文输出所有内容。
-            """,
-            ),
-            (
-                "human",
-                """Based on the following analysis, create a Cathie Wood-style investment signal.
-
-            Analysis Data for {ticker}:
-            {analysis_data}
-
-            Return the trading signal in this JSON format:
-            {{
-              "signal": "bullish/bearish/neutral",
-              "confidence": float (0-100),
-              "reasoning": "string"
-            }}
-            """,
-            ),
-        ]
-    )
+    # 构建给大模型的prompt模板
+    # 这个prompt用于让大模型扮演凯茜·伍德，基于颠覆性创新和指数增长原则做出投资决策
+    template = ChatPromptTemplate.from_messages(get_prompt_messages())
 
     prompt = template.invoke({"analysis_data": json.dumps(analysis_data, indent=2), "ticker": ticker})
 
