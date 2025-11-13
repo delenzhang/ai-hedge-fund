@@ -16,6 +16,7 @@ class PortfolioDecision(BaseModel):
     quantity: int = Field(description="Number of shares to trade")
     confidence: int = Field(description="Confidence 0-100")
     reasoning: str = Field(description="Reasoning for the decision")
+    suggested_price: float | None = Field(default=None, description="Suggested buy/sell price per share (optional)")
 
 
 class PortfolioManagerOutput(BaseModel):
@@ -197,7 +198,7 @@ def generate_trading_decision(
         # If only 'hold' key exists, there is no trade possible
         if set(aa.keys()) == {"hold"}:
             prefilled_decisions[t] = PortfolioDecision(
-                action="hold", quantity=0, confidence=100.0, reasoning="No valid trade available"
+                action="hold", quantity=0, confidence=100.0, reasoning="No valid trade available", suggested_price=None
             )
         else:
             tickers_for_llm.append(t)
@@ -208,6 +209,7 @@ def generate_trading_decision(
     # Build compact payloads only for tickers sent to LLM
     compact_signals = _compact_signals({t: signals_by_ticker.get(t, {}) for t in tickers_for_llm})
     compact_allowed = {t: allowed_actions_full[t] for t in tickers_for_llm}
+    compact_prices = {t: current_prices.get(t, 0.0) for t in tickers_for_llm}
 
     # 构建给大模型的prompt模板
     # 这个prompt用于让大模型作为投资组合经理，基于分析师信号和允许的操作做出交易决策
@@ -216,6 +218,7 @@ def generate_trading_decision(
     prompt_data = {
         "signals": json.dumps(compact_signals, separators=(",", ":"), ensure_ascii=False),
         "allowed": json.dumps(compact_allowed, separators=(",", ":"), ensure_ascii=False),
+        "prices": json.dumps(compact_prices, separators=(",", ":"), ensure_ascii=False),
     }
     prompt = template.invoke(prompt_data)
 
@@ -225,7 +228,7 @@ def generate_trading_decision(
         decisions = dict(prefilled_decisions)
         for t in tickers_for_llm:
             decisions[t] = PortfolioDecision(
-                action="hold", quantity=0, confidence=0.0, reasoning="Default decision: hold"
+                action="hold", quantity=0, confidence=0.0, reasoning="Default decision: hold", suggested_price=None
             )
         return PortfolioManagerOutput(decisions=decisions)
 

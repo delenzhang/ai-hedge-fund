@@ -154,6 +154,13 @@ def print_trading_output(result: dict, model_name: str = None, model_provider: s
             if current_line:
                 wrapped_reasoning += current_line
 
+        # Get suggested price if available
+        suggested_price = decision.get('suggested_price')
+        if suggested_price is not None and suggested_price > 0:
+            price_display = f"{Fore.YELLOW}${suggested_price:.2f}{Style.RESET_ALL}"
+        else:
+            price_display = f"{Fore.WHITE}N/A{Style.RESET_ALL}"
+
         decision_data = [
             ["操作 / Action", f"{action_color}{action}{Style.RESET_ALL}"],
             ["数量 / Quantity", f"{action_color}{decision.get('quantity')}{Style.RESET_ALL}"],
@@ -161,6 +168,7 @@ def print_trading_output(result: dict, model_name: str = None, model_provider: s
                 "置信度 / Confidence",
                 f"{Fore.WHITE}{decision.get('confidence'):.1f}%{Style.RESET_ALL}",
             ],
+            ["建议价格 / Suggested Price", price_display],
             ["推理 / Reasoning", f"{Fore.WHITE}{wrapped_reasoning}{Style.RESET_ALL}"],
         ]
         
@@ -207,12 +215,20 @@ def print_trading_output(result: dict, model_name: str = None, model_provider: s
                     elif signal == "NEUTRAL":
                         neutral_count += 1
 
+        # Get suggested price if available
+        suggested_price = decision.get('suggested_price')
+        if suggested_price is not None and suggested_price > 0:
+            price_str = f"{Fore.YELLOW}${suggested_price:.2f}{Style.RESET_ALL}"
+        else:
+            price_str = f"{Fore.WHITE}N/A{Style.RESET_ALL}"
+
         portfolio_data.append(
             [
                 f"{Fore.CYAN}{ticker}{Style.RESET_ALL}",
                 f"{action_color}{action}{Style.RESET_ALL}",
                 f"{action_color}{decision.get('quantity')}{Style.RESET_ALL}",
                 f"{Fore.WHITE}{decision.get('confidence'):.1f}%{Style.RESET_ALL}",
+                price_str,
                 f"{Fore.GREEN}{bullish_count}{Style.RESET_ALL}",
                 f"{Fore.RED}{bearish_count}{Style.RESET_ALL}",
                 f"{Fore.YELLOW}{neutral_count}{Style.RESET_ALL}",
@@ -224,6 +240,7 @@ def print_trading_output(result: dict, model_name: str = None, model_provider: s
         f"{Fore.WHITE}操作 / Action",
         f"{Fore.WHITE}数量 / Quantity",
         f"{Fore.WHITE}置信度 / Confidence",
+        f"{Fore.WHITE}建议价格 / Suggested Price",
         f"{Fore.WHITE}看涨 / Bullish",
         f"{Fore.WHITE}看跌 / Bearish",
         f"{Fore.WHITE}中性 / Neutral",
@@ -235,7 +252,7 @@ def print_trading_output(result: dict, model_name: str = None, model_provider: s
             portfolio_data,
             headers=headers,
             tablefmt="grid",
-            colalign=("left", "center", "right", "right", "center", "center", "center"),
+            colalign=("left", "center", "right", "right", "right", "center", "center", "center"),
         )
     )
     
@@ -432,12 +449,17 @@ def generate_markdown_report(ticker: str, decision: dict, analyst_signals: dict,
     quantity = decision.get("quantity", 0)
     confidence = decision.get("confidence", 0)
     reasoning = decision.get("reasoning", "")
+    suggested_price = decision.get("suggested_price")
     
     markdown.append("| 项目 | 内容 |\n")
     markdown.append("|------|------|\n")
     markdown.append(f"| 操作 / Action | {action} |\n")
     markdown.append(f"| 数量 / Quantity | {quantity} |\n")
     markdown.append(f"| 置信度 / Confidence | {confidence:.1f}% |\n")
+    if suggested_price is not None and suggested_price > 0:
+        markdown.append(f"| 建议价格 / Suggested Price | ${suggested_price:.2f} |\n")
+    else:
+        markdown.append(f"| 建议价格 / Suggested Price | N/A |\n")
     markdown.append(f"| 推理 / Reasoning | {reasoning.replace('|', '\\|').replace('\n', '<br>')} |\n")
     
     # 投资组合摘要（仅当前股票）
@@ -457,9 +479,10 @@ def generate_markdown_report(ticker: str, decision: dict, analyst_signals: dict,
             elif signal == "NEUTRAL":
                 neutral_count += 1
     
-    markdown.append("| 股票代码 / Ticker | 操作 / Action | 数量 / Quantity | 置信度 / Confidence | 看涨 / Bullish | 看跌 / Bearish | 中性 / Neutral |\n")
-    markdown.append("|-------------------|---------------|-----------------|---------------------|----------------|----------------|----------------|\n")
-    markdown.append(f"| {ticker} | {action} | {quantity} | {confidence:.1f}% | {bullish_count} | {bearish_count} | {neutral_count} |\n")
+    markdown.append("| 股票代码 / Ticker | 操作 / Action | 数量 / Quantity | 置信度 / Confidence | 建议价格 / Suggested Price | 看涨 / Bullish | 看跌 / Bearish | 中性 / Neutral |\n")
+    markdown.append("|-------------------|---------------|-----------------|---------------------|---------------------------|----------------|----------------|----------------|\n")
+    price_display = f"${suggested_price:.2f}" if suggested_price is not None and suggested_price > 0 else "N/A"
+    markdown.append(f"| {ticker} | {action} | {quantity} | {confidence:.1f}% | {price_display} | {bullish_count} | {bearish_count} | {neutral_count} |\n")
     
     # 投资组合策略
     portfolio_manager_reasoning = reasoning
@@ -493,7 +516,7 @@ def generate_markdown_report(ticker: str, decision: dict, analyst_signals: dict,
 
 def save_report_to_file(ticker: str, decision: dict, analyst_signals: dict, result: dict, model_name: str = None, model_provider: str = None) -> None:
     """
-    将分析报告保存到 report 文件夹
+    将分析报告保存到 report/日期/ 目录下
     
     Args:
         ticker: 股票代码
@@ -502,18 +525,25 @@ def save_report_to_file(ticker: str, decision: dict, analyst_signals: dict, resu
         result: 完整的结果字典
         model_name: 使用的模型名称
         model_provider: 使用的模型提供商
+        
+    文件保存路径格式：report/YYYY-MM-DD/股票名-模型名.md
+    例如：report/2025-11-12/PYPL-deepseek-v3.md
     """
     # 获取当前日期
     current_date = datetime.now().strftime("%Y-%m-%d")
     
     # 构建报告目录路径（相对于项目根目录）
     project_root = Path(__file__).parent.parent.parent
-    report_dir = project_root / "report"
+    report_base_dir = project_root / "report"
+    
+    # 创建日期子目录：report/YYYY-MM-DD/
+    report_dir = report_base_dir / current_date
     
     # 确保目录存在
-    report_dir.mkdir(exist_ok=True)
+    report_dir.mkdir(parents=True, exist_ok=True)
     
-    # 生成文件名：股票名-模型名-日期.md（如果提供了模型名）
+    # 生成文件名：股票名-模型名.md（如果提供了模型名）
+    # 日期已在目录名中，文件名不再包含日期
     if model_name:
         # 清理模型名称，移除可能不适合文件名的字符
         # 保留字母、数字、连字符和下划线，其他字符替换为连字符
@@ -523,9 +553,9 @@ def save_report_to_file(ticker: str, decision: dict, analyst_signals: dict, resu
             safe_model_name = safe_model_name.replace("--", "-")
         # 移除开头和结尾的连字符
         safe_model_name = safe_model_name.strip("-")
-        filename = f"{ticker}-{safe_model_name}-{current_date}.md"
+        filename = f"{ticker}-{safe_model_name}.md"
     else:
-        filename = f"{ticker}-{current_date}.md"
+        filename = f"{ticker}.md"
     filepath = report_dir / filename
     
     # 生成 Markdown 报告

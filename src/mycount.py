@@ -24,6 +24,12 @@ initial_positions = {
             "short": 0,
             "short_cost_basis": 0.0,
         },
+        "NIO": {
+            "long": 100,
+            "long_cost_basis": -15,
+            "short": 0,
+            "short_cost_basis": 0.0,
+        },
     }
     
     # 可选：为每个股票设置不同的初始已实现收益
@@ -40,6 +46,10 @@ initial_realized_gains = {
         },
         "NUS": {
              "long": -2102,
+            "short": 0.0,
+        },
+        "NIO": {
+            "long": 2232,
             "short": 0.0,
         }
     }
