@@ -1,6 +1,7 @@
 """Helper functions for LLM"""
 
 import json
+import time
 from pydantic import BaseModel
 from src.llm.models import get_model, get_model_info
 from src.utils.progress import progress
@@ -60,25 +61,55 @@ def call_llm(
         try:
             # Call the LLM
             result = llm.invoke(prompt)
+            if model_info.model_name == 'deepseek-r1':
+                 time.sleep(10)
 
             # For non-JSON support models, we need to extract and parse the JSON manually
             if model_info and not model_info.has_json_mode():
                 parsed_result = extract_json_from_response(result.content)
                 if parsed_result:
                     return pydantic_model(**parsed_result)
+                else:
+                    # If JSON extraction failed, raise an exception to trigger retry
+                    raise ValueError(f"Failed to extract JSON from response. Content: {result.content[:200]}...")
             else:
                 return result
 
         except Exception as e:
+            print(e)
+            print('--'*100)
+            error_str = str(e).lower()
+            is_rate_limit = (
+                "rate limit" in error_str or
+                "请求频率超出限制" in error_str or
+                "frequency" in error_str or
+                "429" in error_str or
+                "too many requests" in error_str
+            )
+            
             if agent_name:
-                progress.update_status(agent_name, None, f"Error - retry {attempt + 1}/{max_retries}")
+                error_msg = f"Rate limit error - retry {attempt + 1}/{max_retries}" if is_rate_limit else f"Error - retry {attempt + 1}/{max_retries}"
+                progress.update_status(agent_name, None, error_msg)
 
+            # If this is the last attempt, don't wait
             if attempt == max_retries - 1:
                 print(f"Error in LLM call after {max_retries} attempts: {e}")
                 # Use default_factory if provided, otherwise create a basic default
                 if default_factory:
                     return default_factory()
                 return create_default_response(pydantic_model)
+            
+            # Calculate delay based on error type
+            if is_rate_limit:
+                # Exponential backoff for rate limits: 5s, 10s, 20s
+                delay = 5 * (2 ** attempt)
+                print(f"Rate limit detected. Waiting {delay}s before retry {attempt + 1}/{max_retries}...")
+            else:
+                # Linear backoff for other errors: 1s, 2s, 3s
+                delay = attempt + 1
+                print(f"Error occurred. Waiting {delay}s before retry {attempt + 1}/{max_retries}...")
+            
+            time.sleep(delay)
 
     # This should never be reached due to the retry logic above
     return create_default_response(pydantic_model)
@@ -107,8 +138,12 @@ def create_default_response(model_class: type[BaseModel]) -> BaseModel:
 
 
 def extract_json_from_response(content: str) -> dict | None:
-    """Extracts JSON from markdown-formatted response."""
+    """Extracts JSON from markdown-formatted response or plain JSON string."""
+    if not content:
+        return None
+    
     try:
+        # First, try to find JSON in markdown code blocks (```json ... ```)
         json_start = content.find("```json")
         if json_start != -1:
             json_text = content[json_start + 7 :]  # Skip past ```json
@@ -116,8 +151,32 @@ def extract_json_from_response(content: str) -> dict | None:
             if json_end != -1:
                 json_text = json_text[:json_end].strip()
                 return json.loads(json_text)
+        
+        # If no markdown block found, try to find JSON object directly
+        # Look for { ... } pattern
+        first_brace = content.find("{")
+        if first_brace != -1:
+            # Try to find matching closing brace
+            brace_count = 0
+            for i in range(first_brace, len(content)):
+                if content[i] == "{":
+                    brace_count += 1
+                elif content[i] == "}":
+                    brace_count -= 1
+                    if brace_count == 0:
+                        json_text = content[first_brace:i+1].strip()
+                        return json.loads(json_text)
+        
+        # If still not found, try parsing the entire content as JSON
+        content_stripped = content.strip()
+        if content_stripped.startswith("{") or content_stripped.startswith("["):
+            return json.loads(content_stripped)
+            
+    except json.JSONDecodeError as e:
+        print(f"Error parsing JSON from response: {e}")
     except Exception as e:
         print(f"Error extracting JSON from response: {e}")
+    
     return None
 
 

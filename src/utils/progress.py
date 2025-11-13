@@ -8,6 +8,12 @@ from typing import Dict, Optional, Callable, List
 
 console = Console()
 
+# Import analyst config for display names
+try:
+    from src.utils.analysts import ANALYST_CONFIG
+except ImportError:
+    ANALYST_CONFIG = {}
+
 
 class AgentProgress:
     """Manages progress tracking for multiple agents."""
@@ -68,8 +74,36 @@ class AgentProgress:
         return {agent_name: {"ticker": info["ticker"], "status": info["status"], "display_name": self._get_display_name(agent_name)} for agent_name, info in self.agent_status.items()}
 
     def _get_display_name(self, agent_name: str) -> str:
-        """Convert agent_name to a display-friendly format."""
-        return agent_name.replace("_agent", "").replace("_", " ").title()
+        """Convert agent_name to a display-friendly format with Chinese/English."""
+        # Handle portfolio_manager or portfolio_management_agent
+        if "portfolio_manager" in agent_name or "portfolio_management" in agent_name:
+            return "投资组合经理 / Portfolio Manager"
+        
+        # Handle risk_management_agent
+        if "risk_management" in agent_name:
+            return "风险管理 / Risk Management"
+        
+        # Try to match with ANALYST_CONFIG keys
+        # First, try direct match after removing _agent suffix
+        base_key = agent_name.replace("_agent", "")
+        if base_key in ANALYST_CONFIG:
+            return ANALYST_CONFIG[base_key]["display_name"]
+        
+        # Try matching by checking if agent_name ends with any key + "_agent"
+        for key in ANALYST_CONFIG.keys():
+            if agent_name == f"{key}_agent" or agent_name.endswith(f"_{key}_agent"):
+                return ANALYST_CONFIG[key]["display_name"]
+        
+        # Try matching by removing common suffixes
+        for key in ANALYST_CONFIG.keys():
+            # Remove _analyst suffix if present and try matching
+            if key.endswith("_analyst"):
+                base_without_analyst = key.replace("_analyst", "")
+                if agent_name == f"{base_without_analyst}_agent" or agent_name.endswith(f"_{base_without_analyst}_agent"):
+                    return ANALYST_CONFIG[key]["display_name"]
+        
+        # Fallback to original format if not found
+        return base_key.replace("_", " ").title()
 
     def _refresh_display(self):
         """Refresh the progress display."""
@@ -103,7 +137,7 @@ class AgentProgress:
             agent_display = self._get_display_name(agent_name)
             status_text = Text()
             status_text.append(f"{symbol} ", style=style)
-            status_text.append(f"{agent_display:<20}", style=Style(bold=True))
+            status_text.append(f"{agent_display:<45}", style=Style(bold=True))
 
             if ticker:
                 status_text.append(f"[{ticker}] ", style=Style(color="cyan"))

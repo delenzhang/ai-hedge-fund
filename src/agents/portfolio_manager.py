@@ -221,6 +221,8 @@ def generate_trading_decision(
         "prices": json.dumps(compact_prices, separators=(",", ":"), ensure_ascii=False),
     }
     prompt = template.invoke(prompt_data)
+    print("signals>", prompt_data)
+    print("*"*100)
 
     # Default factory fills remaining tickers as hold if the LLM fails
     def create_default_portfolio_output():

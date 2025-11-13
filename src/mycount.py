@@ -13,8 +13,8 @@ initial_positions = {
             "short_cost_basis": 0.0,
         },
         "BABA": {
-            "long": 26,
-            "long_cost_basis": 169.1,
+            "long": 61,
+            "long_cost_basis": 163.6,
             "short": 0,
             "short_cost_basis": 0.0,
         },

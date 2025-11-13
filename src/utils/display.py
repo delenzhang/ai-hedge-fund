@@ -118,7 +118,7 @@ def print_trading_output(result: dict, model_name: str = None, model_provider: s
         print(
             tabulate(
                 table_data,
-                headers=[f"{Fore.WHITE}分析师 / Agent", "信号 / Signal", "置信度 / Confidence", "推理 / Reasoning"],
+                headers=[f"{Fore.WHITE}分析师 / Agent", "信号 / Signal", "概率 / Probability", "推理 / Reasoning"],
                 tablefmt="grid",
                 colalign=("left", "center", "right", "left"),
             )
@@ -165,7 +165,7 @@ def print_trading_output(result: dict, model_name: str = None, model_provider: s
             ["操作 / Action", f"{action_color}{action}{Style.RESET_ALL}"],
             ["数量 / Quantity", f"{action_color}{decision.get('quantity')}{Style.RESET_ALL}"],
             [
-                "置信度 / Confidence",
+                "概率 / Probability",
                 f"{Fore.WHITE}{decision.get('confidence'):.1f}%{Style.RESET_ALL}",
             ],
             ["建议价格 / Suggested Price", price_display],
@@ -239,7 +239,7 @@ def print_trading_output(result: dict, model_name: str = None, model_provider: s
         f"{Fore.WHITE}股票代码 / Ticker",
         f"{Fore.WHITE}操作 / Action",
         f"{Fore.WHITE}数量 / Quantity",
-        f"{Fore.WHITE}置信度 / Confidence",
+        f"{Fore.WHITE}概率 / Probability",
         f"{Fore.WHITE}建议价格 / Suggested Price",
         f"{Fore.WHITE}看涨 / Bullish",
         f"{Fore.WHITE}看跌 / Bearish",
@@ -290,7 +290,7 @@ def print_trading_output(result: dict, model_name: str = None, model_provider: s
         print(f"{Fore.CYAN}{wrapped_reasoning}{Style.RESET_ALL}")
     
     # Print confidence recommendations for each decision
-    print(f"\n{Fore.WHITE}{Style.BRIGHT}置信度应用建议 / CONFIDENCE RECOMMENDATIONS:{Style.RESET_ALL}")
+    print(f"\n{Fore.WHITE}{Style.BRIGHT}概率应用建议 / PROBABILITY RECOMMENDATIONS:{Style.RESET_ALL}")
     print(f"{Fore.WHITE}{Style.BRIGHT}{'=' * 70}{Style.RESET_ALL}")
     
     # Group decisions by action type for summary
@@ -322,7 +322,7 @@ def print_trading_output(result: dict, model_name: str = None, model_provider: s
             'COVER': f'{Fore.GREEN}平空/回补{Style.RESET_ALL}',
         }.get(action, action)
         
-        print(f"\n{Fore.CYAN}{ticker}{Style.RESET_ALL} - {action_display} - {Fore.WHITE}置信度: {confidence:.1f}%{Style.RESET_ALL}")
+        print(f"\n{Fore.CYAN}{ticker}{Style.RESET_ALL} - {action_display} - {Fore.WHITE}概率: {confidence:.1f}%{Style.RESET_ALL}")
         print(f"  {recommendation_color}{recommendation['message']}{Style.RESET_ALL}")
         if recommendation.get('details'):
             for detail in recommendation['details']:
@@ -337,7 +337,7 @@ def print_trading_output(result: dict, model_name: str = None, model_provider: s
             avg_long_confidence = sum(conf for _, conf, _ in long_positions) / len(long_positions)
             print(f"\n{Fore.GREEN}做多/买入操作 (BUY/COVER):{Style.RESET_ALL}")
             print(f"  数量: {len(long_positions)} 个")
-            print(f"  平均置信度: {Fore.WHITE}{avg_long_confidence:.1f}%{Style.RESET_ALL}")
+            print(f"  平均概率: {Fore.WHITE}{avg_long_confidence:.1f}%{Style.RESET_ALL}")
             long_recommendation = get_confidence_recommendation(avg_long_confidence, 'BUY')
             print(f"  总体建议: {long_recommendation['color']}{long_recommendation['summary']}{Style.RESET_ALL}")
         
@@ -345,7 +345,7 @@ def print_trading_output(result: dict, model_name: str = None, model_provider: s
             avg_short_confidence = sum(conf for _, conf, _ in short_positions) / len(short_positions)
             print(f"\n{Fore.RED}做空/卖出操作 (SHORT/SELL):{Style.RESET_ALL}")
             print(f"  数量: {len(short_positions)} 个")
-            print(f"  平均置信度: {Fore.WHITE}{avg_short_confidence:.1f}%{Style.RESET_ALL}")
+            print(f"  平均概率: {Fore.WHITE}{avg_short_confidence:.1f}%{Style.RESET_ALL}")
             short_recommendation = get_confidence_recommendation(avg_short_confidence, 'SHORT')
             print(f"  总体建议: {short_recommendation['color']}{short_recommendation['summary']}{Style.RESET_ALL}")
 
@@ -431,7 +431,7 @@ def generate_markdown_report(ticker: str, decision: dict, analyst_signals: dict,
     table_data.sort(key=lambda x: analyst_order.get(x["agent"], 999))
     
     # 生成 Markdown 表格
-    markdown.append("| 分析师 / Agent | 信号 / Signal | 置信度 / Confidence | 推理 / Reasoning |\n")
+    markdown.append("| 分析师 / Agent | 信号 / Signal | 概率 / Probability | 推理 / Reasoning |\n")
     markdown.append("|----------------|---------------|---------------------|-------------------|\n")
     
     for row in table_data:
@@ -455,7 +455,7 @@ def generate_markdown_report(ticker: str, decision: dict, analyst_signals: dict,
     markdown.append("|------|------|\n")
     markdown.append(f"| 操作 / Action | {action} |\n")
     markdown.append(f"| 数量 / Quantity | {quantity} |\n")
-    markdown.append(f"| 置信度 / Confidence | {confidence:.1f}% |\n")
+    markdown.append(f"| 概率 / Probability | {confidence:.1f}% |\n")
     if suggested_price is not None and suggested_price > 0:
         markdown.append(f"| 建议价格 / Suggested Price | ${suggested_price:.2f} |\n")
     else:
@@ -479,7 +479,7 @@ def generate_markdown_report(ticker: str, decision: dict, analyst_signals: dict,
             elif signal == "NEUTRAL":
                 neutral_count += 1
     
-    markdown.append("| 股票代码 / Ticker | 操作 / Action | 数量 / Quantity | 置信度 / Confidence | 建议价格 / Suggested Price | 看涨 / Bullish | 看跌 / Bearish | 中性 / Neutral |\n")
+    markdown.append("| 股票代码 / Ticker | 操作 / Action | 数量 / Quantity | 概率 / Probability | 建议价格 / Suggested Price | 看涨 / Bullish | 看跌 / Bearish | 中性 / Neutral |\n")
     markdown.append("|-------------------|---------------|-----------------|---------------------|---------------------------|----------------|----------------|----------------|\n")
     price_display = f"${suggested_price:.2f}" if suggested_price is not None and suggested_price > 0 else "N/A"
     markdown.append(f"| {ticker} | {action} | {quantity} | {confidence:.1f}% | {price_display} | {bullish_count} | {bearish_count} | {neutral_count} |\n")
@@ -490,8 +490,8 @@ def generate_markdown_report(ticker: str, decision: dict, analyst_signals: dict,
         markdown.append(f"\n### 投资组合策略 / Portfolio Strategy\n\n")
         markdown.append(f"{portfolio_manager_reasoning.replace('|', '\\|')}\n")
     
-    # 置信度建议
-    markdown.append(f"\n## 置信度应用建议 / CONFIDENCE RECOMMENDATIONS\n")
+    # 概率建议
+    markdown.append(f"\n## 概率应用建议 / PROBABILITY RECOMMENDATIONS\n")
     markdown.append(f"{'=' * 70}\n\n")
     
     if action != 'HOLD':
@@ -503,7 +503,7 @@ def generate_markdown_report(ticker: str, decision: dict, analyst_signals: dict,
             'COVER': '平空/回补',
         }.get(action, action)
         
-        markdown.append(f"**{ticker}** - {action_display} - 置信度: {confidence:.1f}%\n\n")
+        markdown.append(f"**{ticker}** - {action_display} - 概率: {confidence:.1f}%\n\n")
         markdown.append(f"{recommendation['message']}\n\n")
         
         if recommendation.get('details'):
@@ -516,7 +516,7 @@ def generate_markdown_report(ticker: str, decision: dict, analyst_signals: dict,
 
 def save_report_to_file(ticker: str, decision: dict, analyst_signals: dict, result: dict, model_name: str = None, model_provider: str = None) -> None:
     """
-    将分析报告保存到 report/日期/ 目录下
+    将分析报告保存到 report/[ticker]/[日期]/ 目录下
     
     Args:
         ticker: 股票代码
@@ -526,8 +526,8 @@ def save_report_to_file(ticker: str, decision: dict, analyst_signals: dict, resu
         model_name: 使用的模型名称
         model_provider: 使用的模型提供商
         
-    文件保存路径格式：report/YYYY-MM-DD/股票名-模型名.md
-    例如：report/2025-11-12/PYPL-deepseek-v3.md
+    文件保存路径格式：report/[ticker]/[日期]/[model名].md
+    例如：report/PYPL/2025-11-12/deepseek-v3.md
     """
     # 获取当前日期
     current_date = datetime.now().strftime("%Y-%m-%d")
@@ -536,14 +536,13 @@ def save_report_to_file(ticker: str, decision: dict, analyst_signals: dict, resu
     project_root = Path(__file__).parent.parent.parent
     report_base_dir = project_root / "report"
     
-    # 创建日期子目录：report/YYYY-MM-DD/
-    report_dir = report_base_dir / current_date
+    # 创建目录结构：report/[ticker]/[日期]/
+    report_dir = report_base_dir / ticker / current_date
     
     # 确保目录存在
     report_dir.mkdir(parents=True, exist_ok=True)
     
-    # 生成文件名：股票名-模型名.md（如果提供了模型名）
-    # 日期已在目录名中，文件名不再包含日期
+    # 生成文件名：模型名.md（如果提供了模型名）
     if model_name:
         # 清理模型名称，移除可能不适合文件名的字符
         # 保留字母、数字、连字符和下划线，其他字符替换为连字符
@@ -553,7 +552,7 @@ def save_report_to_file(ticker: str, decision: dict, analyst_signals: dict, resu
             safe_model_name = safe_model_name.replace("--", "-")
         # 移除开头和结尾的连字符
         safe_model_name = safe_model_name.strip("-")
-        filename = f"{ticker}-{safe_model_name}.md"
+        filename = f"{safe_model_name}.md"
     else:
         filename = f"{ticker}.md"
     filepath = report_dir / filename
@@ -572,10 +571,10 @@ def save_report_to_file(ticker: str, decision: dict, analyst_signals: dict, resu
 
 def get_confidence_recommendation(confidence: float, action: str = 'BUY') -> dict:
     """
-    根据置信度和操作类型返回应用建议
+    根据概率和操作类型返回应用建议
     
     Args:
-        confidence: 置信度分数 (0-100)
+        confidence: 概率分数 (0-100)
         action: 操作类型 ('BUY', 'SELL', 'SHORT', 'COVER')
         
     Returns:
@@ -589,8 +588,8 @@ def get_confidence_recommendation(confidence: float, action: str = 'BUY') -> dic
         if is_long:
             return {
                 'color': Fore.GREEN,
-                'level': '高置信度',
-                'message': '✅ 高置信度 (90-100%)：强烈建议做多，可考虑较大仓位',
+                'level': '高概率',
+                'message': '✅ 高概率 (90-100%)：强烈建议做多，可考虑较大仓位',
                 'summary': '强烈建议做多，适合较大仓位配置',
                 'details': [
                     '能力圈内卓越业务，价格有吸引力',
@@ -602,8 +601,8 @@ def get_confidence_recommendation(confidence: float, action: str = 'BUY') -> dic
         else:  # is_short
             return {
                 'color': Fore.GREEN,
-                'level': '高置信度',
-                'message': '✅ 高置信度 (90-100%)：强烈建议做空，可考虑较大仓位',
+                'level': '高概率',
+                'message': '✅ 高概率 (90-100%)：强烈建议做空，可考虑较大仓位',
                 'summary': '强烈建议做空，适合较大仓位配置',
                 'details': [
                     '业务基本面严重恶化或严重高估',
@@ -616,8 +615,8 @@ def get_confidence_recommendation(confidence: float, action: str = 'BUY') -> dic
         if is_long:
             return {
                 'color': Fore.GREEN,
-                'level': '较高置信度',
-                'message': '✅ 较高置信度 (70-89%)：建议做多，适合中等仓位',
+                'level': '较高概率',
+                'message': '✅ 较高概率 (70-89%)：建议做多，适合中等仓位',
                 'summary': '建议做多，适合中等仓位配置',
                 'details': [
                     '好业务，有护城河，估值合理',
@@ -629,8 +628,8 @@ def get_confidence_recommendation(confidence: float, action: str = 'BUY') -> dic
         else:  # is_short
             return {
                 'color': Fore.GREEN,
-                'level': '较高置信度',
-                'message': '✅ 较高置信度 (70-89%)：建议做空，适合中等仓位',
+                'level': '较高概率',
+                'message': '✅ 较高概率 (70-89%)：建议做空，适合中等仓位',
                 'summary': '建议做空，适合中等仓位配置',
                 'details': [
                     '基本面转弱或估值偏高',
@@ -643,8 +642,8 @@ def get_confidence_recommendation(confidence: float, action: str = 'BUY') -> dic
         if is_long:
             return {
                 'color': Fore.YELLOW,
-                'level': '中等置信度',
-                'message': '⚠️  中等置信度 (50-69%)：谨慎做多，建议小仓位试探',
+                'level': '中等概率',
+                'message': '⚠️  中等概率 (50-69%)：谨慎做多，建议小仓位试探',
                 'summary': '谨慎做多，建议小仓位试探',
                 'details': [
                     '信号混杂，需要更多信息或更好价格',
@@ -656,8 +655,8 @@ def get_confidence_recommendation(confidence: float, action: str = 'BUY') -> dic
         else:  # is_short
             return {
                 'color': Fore.YELLOW,
-                'level': '中等置信度',
-                'message': '⚠️  中等置信度 (50-69%)：谨慎做空，建议小仓位试探',
+                'level': '中等概率',
+                'message': '⚠️  中等概率 (50-69%)：谨慎做空，建议小仓位试探',
                 'summary': '谨慎做空，建议小仓位试探',
                 'details': [
                     '做空信号不够强烈，存在反弹风险',
@@ -670,8 +669,8 @@ def get_confidence_recommendation(confidence: float, action: str = 'BUY') -> dic
         if is_long:
             return {
                 'color': Fore.RED,
-                'level': '低置信度',
-                'message': '❌ 低置信度 (30-49%)：不建议做多',
+                'level': '低概率',
+                'message': '❌ 低概率 (30-49%)：不建议做多',
                 'summary': '不建议做多，建议避免或极小仓位',
                 'details': [
                     '超出能力圈或基本面令人担忧',
@@ -683,8 +682,8 @@ def get_confidence_recommendation(confidence: float, action: str = 'BUY') -> dic
         else:  # is_short
             return {
                 'color': Fore.RED,
-                'level': '低置信度',
-                'message': '❌ 低置信度 (30-49%)：不建议做空',
+                'level': '低概率',
+                'message': '❌ 低概率 (30-49%)：不建议做空',
                 'summary': '不建议做空，做空风险较高',
                 'details': [
                     '做空信号不够明确，存在反弹风险',
@@ -697,8 +696,8 @@ def get_confidence_recommendation(confidence: float, action: str = 'BUY') -> dic
         if is_long:
             return {
                 'color': Fore.RED,
-                'level': '极低置信度',
-                'message': '❌ 极低置信度 (0-29%)：强烈不建议做多',
+                'level': '极低概率',
+                'message': '❌ 极低概率 (0-29%)：强烈不建议做多',
                 'summary': '强烈不建议做多，建议避免执行',
                 'details': [
                     '业务差或严重高估',
@@ -710,8 +709,8 @@ def get_confidence_recommendation(confidence: float, action: str = 'BUY') -> dic
         else:  # is_short
             return {
                 'color': Fore.RED,
-                'level': '极低置信度',
-                'message': '❌ 极低置信度 (0-29%)：强烈不建议做空',
+                'level': '极低概率',
+                'message': '❌ 极低概率 (0-29%)：强烈不建议做空',
                 'summary': '强烈不建议做空，做空风险极高',
                 'details': [
                     '做空信号极弱，存在强烈反弹风险',
