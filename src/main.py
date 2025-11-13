@@ -65,7 +65,7 @@ def run_hedge_fund(
 
         final_state = agent.invoke(
             {
-                "messages": [
+                "messages": [               
                     HumanMessage(
                         content="Make trading decisions based on the provided data.",
                     )
