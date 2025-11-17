@@ -176,18 +176,22 @@ class Cache:
         merged.extend([item for item in new_data if item[key_field] not in existing_keys])
         return merged
 
-    def get_prices(self, ticker: str) -> list[dict[str, any]] | None:
+    def get_prices(self, ticker: str, period: str = None) -> list[dict[str, any]] | None:
         """Get cached price data if available."""
-        return self._load_from_file("prices", ticker)
+        # If period is provided, include it in the cache key
+        cache_key = f"{ticker}_{period}" if period else ticker
+        return self._load_from_file("prices", cache_key)
 
-    def set_prices(self, ticker: str, data: list[dict[str, any]], update_date: str = None):
+    def set_prices(self, ticker: str, data: list[dict[str, any]], period: str = None, update_date: str = None):
         """Append new price data to cache."""
-        existing = self.get_prices(ticker)
+        # If period is provided, include it in the cache key
+        cache_key = f"{ticker}_{period}" if period else ticker
+        existing = self.get_prices(ticker, period)
         merged = self._merge_data(existing, data, key_field="time")
-        self._save_to_file("prices", ticker, merged)
+        self._save_to_file("prices", cache_key, merged)
         # Update last_updated date if provided
         if update_date:
-            self.set_last_updated_date("prices", ticker, update_date)
+            self.set_last_updated_date("prices", cache_key, update_date)
 
     def get_financial_metrics(self, ticker: str, period: str = "ttm") -> list[dict[str, any]] | None:
         """Get cached financial metrics if available."""
@@ -227,6 +231,76 @@ class Cache:
             metadata_path.parent.mkdir(parents=True, exist_ok=True)
             with open(metadata_path, "w", encoding="utf-8") as f:
                 json.dump({"last_updated": date}, f, ensure_ascii=False, indent=2)
+        except IOError as e:
+            print(f"Warning: Failed to save metadata to {metadata_path}: {e}")
+
+    def get_last_updated_timestamp(self, cache_type: str, ticker: str) -> float | None:
+        """Get the last updated timestamp for a cache entry."""
+        metadata_path = self._get_metadata_path(cache_type, ticker)
+        if not metadata_path.exists():
+            return None
+        
+        try:
+            with open(metadata_path, "r", encoding="utf-8") as f:
+                metadata = json.load(f)
+                return metadata.get("last_updated_timestamp")
+        except (json.JSONDecodeError, IOError) as e:
+            print(f"Warning: Failed to load metadata from {metadata_path}: {e}")
+            return None
+
+    def set_last_updated_timestamp(self, cache_type: str, ticker: str, timestamp: float):
+        """Set the last updated timestamp for a cache entry."""
+        metadata_path = self._get_metadata_path(cache_type, ticker)
+        try:
+            metadata_path.parent.mkdir(parents=True, exist_ok=True)
+            # Load existing metadata if it exists
+            existing_metadata = {}
+            if metadata_path.exists():
+                try:
+                    with open(metadata_path, "r", encoding="utf-8") as f:
+                        existing_metadata = json.load(f)
+                except (json.JSONDecodeError, IOError):
+                    pass
+            
+            # Update timestamp while preserving other metadata
+            existing_metadata["last_updated_timestamp"] = timestamp
+            with open(metadata_path, "w", encoding="utf-8") as f:
+                json.dump(existing_metadata, f, ensure_ascii=False, indent=2)
+        except IOError as e:
+            print(f"Warning: Failed to save metadata to {metadata_path}: {e}")
+
+    def get_period(self, cache_type: str, ticker: str) -> str | None:
+        """Get the period used for a cache entry."""
+        metadata_path = self._get_metadata_path(cache_type, ticker)
+        if not metadata_path.exists():
+            return None
+        
+        try:
+            with open(metadata_path, "r", encoding="utf-8") as f:
+                metadata = json.load(f)
+                return metadata.get("period")
+        except (json.JSONDecodeError, IOError) as e:
+            print(f"Warning: Failed to load metadata from {metadata_path}: {e}")
+            return None
+
+    def set_period(self, cache_type: str, ticker: str, period: str):
+        """Set the period used for a cache entry."""
+        metadata_path = self._get_metadata_path(cache_type, ticker)
+        try:
+            metadata_path.parent.mkdir(parents=True, exist_ok=True)
+            # Load existing metadata if it exists
+            existing_metadata = {}
+            if metadata_path.exists():
+                try:
+                    with open(metadata_path, "r", encoding="utf-8") as f:
+                        existing_metadata = json.load(f)
+                except (json.JSONDecodeError, IOError):
+                    pass
+            
+            # Update period while preserving other metadata
+            existing_metadata["period"] = period
+            with open(metadata_path, "w", encoding="utf-8") as f:
+                json.dump(existing_metadata, f, ensure_ascii=False, indent=2)
         except IOError as e:
             print(f"Warning: Failed to save metadata to {metadata_path}: {e}")
 

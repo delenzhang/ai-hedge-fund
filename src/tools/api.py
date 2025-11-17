@@ -4,7 +4,7 @@ import pandas as pd
 import requests
 import time
 from decimal import Decimal
-from longport.openapi import QuoteContext, Config, Period, AdjustType
+from longport.openapi import TradeSessions, Period, AdjustType
 
 from src.data.cache import get_cache
 from src.data.models import (
@@ -25,6 +25,56 @@ from src.tools.longbridge import _get_longbridge_ctx
 
 # Global cache instance
 _cache = get_cache()
+
+def _period_to_minutes(period: Period) -> int:
+    """
+    将 Period 枚举转换为分钟数。
+    
+    Args:
+        period: Period 枚举值
+        
+    Returns:
+        int: 对应的分钟数
+    """
+    # 使用 if-elif 语句来避免 Period 作为字典键的问题
+    if period == Period.Min_1:
+        return 1
+    elif period == Period.Min_2:
+        return 2
+    elif period == Period.Min_3:
+        return 3
+    elif period == Period.Min_5:
+        return 5
+    elif period == Period.Min_10:
+        return 10
+    elif period == Period.Min_15:
+        return 15
+    elif period == Period.Min_20:
+        return 20
+    elif period == Period.Min_30:
+        return 30
+    elif period == Period.Min_45:
+        return 45
+    elif period == Period.Min_60:
+        return 60
+    elif period == Period.Min_120:
+        return 120
+    elif period == Period.Min_180:
+        return 180
+    elif period == Period.Min_240:
+        return 240
+    elif period == Period.Day:
+        return 1440  # 1天 = 24 * 60 分钟
+    elif period == Period.Week:
+        return 10080  # 1周 = 7 * 24 * 60 分钟
+    elif period == Period.Month:
+        return 43200  # 1月 ≈ 30 * 24 * 60 分钟
+    elif period == Period.Quarter:
+        return 129600  # 1季度 ≈ 90 * 24 * 60 分钟
+    elif period == Period.Year:
+        return 525600  # 1年 ≈ 365 * 24 * 60 分钟
+    else:
+        return 60  # 默认返回60分钟
 
 def _make_api_request(url: str, headers: dict, method: str = "GET", json_data: dict = None, max_retries: int = 3) -> requests.Response:
     """
@@ -59,17 +109,20 @@ def _make_api_request(url: str, headers: dict, method: str = "GET", json_data: d
         # Return the response (whether success, other errors, or final 429)
         return response
 
-def get_prices(ticker: str, start_date: str, end_date: str, api_key: str = None) -> list[Price]:
+def get_prices(ticker: str, start_date: str, end_date: str, period: Period = Period.Min_60, api_key: str = None) -> list[Price]:
     """
     从缓存或长桥API获取股票价格数据。
     
     首先检查缓存，如果缓存中有数据且符合日期范围，则直接返回。
     如果缓存中没有数据或数据不在指定日期范围内，则从长桥API获取。
+    基于period参数来判断是否需要刷新缓存。
     
     Args:
         ticker: 股票代码（不含市场后缀，如 "AAPL"）
         start_date: 开始日期，格式为 "YYYY-MM-DD"
         end_date: 结束日期，格式为 "YYYY-MM-DD"
+        period: K线周期，默认为 Period.Min_60（60分钟）
+        api_key: API密钥（可选）
         
     Returns:
         list[Price]: 价格数据列表，每个元素包含 open, close, high, low, volume, time
@@ -77,26 +130,52 @@ def get_prices(ticker: str, start_date: str, end_date: str, api_key: str = None)
     Raises:
         Exception: 当从长桥API获取数据失败时
     """
-    today = datetime.datetime.now().strftime("%Y-%m-%d")
+    # Get current timestamp
+    current_timestamp = time.time()
+    print(current_timestamp)
     
-    # Check cache first
-    cached_data = _cache.get_prices(ticker)
-    # Use last_updated_date (query date) instead of data's latest date
-    latest_cached_date = _cache.get_last_updated_date("prices", ticker)
+    # Convert period to minutes for cache refresh logic
+    period_minutes = _period_to_minutes(period)
+    # Get period name as string (e.g., "Min_60", "Day", etc.)
+    period_str = period.name if hasattr(period, 'name') else str(period).split('.')[-1]
     
-    # Check if we need to refresh cache
-    # Refresh if cache doesn't exist or last query date is not today
-    need_refresh = latest_cached_date is None or latest_cached_date != today
+    # Create cache key with period
+    cache_key = f"{ticker}_{period_str}"
+    
+    # Check cache first (using period-specific cache key)
+    cached_data = _cache.get_prices(ticker, period_str)
+    # Get last updated timestamp (using period-specific cache key)
+    last_updated_timestamp = _cache.get_last_updated_timestamp("prices", cache_key)
+    
+    # Check if we need to refresh cache based on period
+    # Refresh if:
+    # 1. Cache doesn't exist (last_updated_timestamp is None)
+    # 2. Last update was more than period_minutes ago
+    need_refresh = True
+    if last_updated_timestamp is not None:
+        # Same period (guaranteed by cache key), check if within the period time window
+        time_diff_seconds = current_timestamp - last_updated_timestamp
+        time_diff_minutes = time_diff_seconds / 60
+        # If within period_minutes, no need to refresh
+        need_refresh = time_diff_minutes >= period_minutes
+    # else: need_refresh is already True (cache doesn't exist)
     
     # If cache exists and doesn't need refresh, record cache hit and use cache
     if not need_refresh:
         _cache.record_cache_hit("prices")
         if cached_data:
             # Filter cached data by date range
-            filtered_data = [Price(**price) for price in cached_data if start_date <= price["time"] <= end_date]
+            # Extract date part from time string (handle both "YYYY-MM-DD" and "YYYY-MM-DD HH:MM" formats)
+            filtered_data = []
+            for price in cached_data:
+                time_str = price["time"]
+                # Extract date part (first 10 characters for "YYYY-MM-DD")
+                price_date = time_str[:10] if len(time_str) >= 10 else time_str
+                if start_date <= price_date <= end_date:
+                    filtered_data.append(Price(**price))
             return filtered_data
         else:
-            # Cache was updated today but has no data, return empty list
+            # Cache was updated within period but has no data, return empty list
             return []
     
     # If cache needs refresh, fetch from API
@@ -120,13 +199,12 @@ def get_prices(ticker: str, start_date: str, end_date: str, api_key: str = None)
         symbol_with_market = f"{ticker}.US"
         
         # 从长桥API获取数据（从结束日期向前查询）
-        resp = ctx.history_candlesticks_by_offset(
+        resp = ctx.candlesticks(
             symbol=symbol_with_market,
-            period=Period.Day,  # 日K线
+            period=period,  # 使用传入的period参数
             adjust_type=AdjustType.ForwardAdjust,  # 前复权
-            forward=False,  # 从指定时间向前查询
             count=count,
-            time=None  # None 表示使用最新交易日
+            trade_sessions=TradeSessions.All  # 所有交易时段（盘前、盘中、盘后、隔夜）
         )
         
         # 将 Decimal 转换为 float 并按日期范围过滤
@@ -138,10 +216,11 @@ def get_prices(ticker: str, start_date: str, end_date: str, api_key: str = None)
         
         prices = []
         for candle in resp:
-            # 将时间戳格式化为 YYYY-MM-DD
+            # 将时间戳格式化为 YYYY-MM-DD HH:MM
+            candle_datetime = candle.timestamp.strftime("%Y-%m-%d %H:%M")
             candle_date = candle.timestamp.strftime("%Y-%m-%d")
             
-            # 按日期范围过滤
+            # 按日期范围过滤（使用日期部分进行比较）
             if start_date <= candle_date <= end_date:
                 price = Price(
                     open=convert_decimal(candle.open),
@@ -149,7 +228,7 @@ def get_prices(ticker: str, start_date: str, end_date: str, api_key: str = None)
                     high=convert_decimal(candle.high),
                     low=convert_decimal(candle.low),
                     volume=int(convert_decimal(candle.volume)),
-                    time=candle_date
+                    time=candle_datetime
                 )
                 prices.append(price)
         
@@ -159,44 +238,13 @@ def get_prices(ticker: str, start_date: str, end_date: str, api_key: str = None)
         if not prices:
             return []
 
-        # 将结果缓存为字典格式并更新 last_updated_date
-        _cache.set_prices(ticker, [p.model_dump() for p in prices], update_date=today)
+        # 将结果缓存为字典格式并更新 last_updated_timestamp (使用带period的缓存键)
+        _cache.set_prices(ticker, [p.model_dump() for p in prices], period=period_str)
+        _cache.set_last_updated_timestamp("prices", cache_key, current_timestamp)
         return prices
         
     except Exception as e:
         raise Exception(f"从长桥API获取数据时出错: {ticker} - {str(e)}")
-
-
-# def get_prices(ticker: str, start_date: str, end_date: str, api_key: str = None) -> list[Price]:
-#     """Fetch price data from cache or API."""
-#     # Create a cache key that includes all parameters to ensure exact matches
-#     cache_key = f"{ticker}_{start_date}_{end_date}"
-    
-#     # Check cache first - simple exact match
-#     if cached_data := _cache.get_prices(cache_key):
-#         return [Price(**price) for price in cached_data]
-
-#     # If not in cache, fetch from API
-#     headers = {}
-#     financial_api_key = api_key or os.environ.get("FINANCIAL_DATASETS_API_KEY")
-#     if financial_api_key:
-#         headers["X-API-KEY"] = financial_api_key
-
-#     url = f"https://api.financialdatasets.ai/prices/?ticker={ticker}&interval=day&interval_multiplier=1&start_date={start_date}&end_date={end_date}"
-#     response = _make_api_request(url, headers)
-#     if response.status_code != 200:
-#         raise Exception(f"Error fetching data: {ticker} - {response.status_code} - {response.text}")
-
-#     # Parse response with Pydantic model
-#     price_response = PriceResponse(**response.json())
-#     prices = price_response.prices
-
-#     if not prices:
-#         return []
-
-#     # Cache the results using the comprehensive cache key
-#     _cache.set_prices(cache_key, [p.model_dump() for p in prices])
-#     return prices
 
 
 def get_financial_metrics(
@@ -649,7 +697,8 @@ def get_market_cap(
 def prices_to_df(prices: list[Price]) -> pd.DataFrame:
     """Convert prices to a DataFrame."""
     df = pd.DataFrame([p.model_dump() for p in prices])
-    df["Date"] = pd.to_datetime(df["time"])
+    # 使用 format='mixed' 来处理混合的时间格式（有些只有日期，有些包含时间）
+    df["Date"] = pd.to_datetime(df["time"], format='mixed', errors='coerce')
     df.set_index("Date", inplace=True)
     numeric_cols = ["open", "close", "high", "low", "volume"]
     for col in numeric_cols:
@@ -659,6 +708,6 @@ def prices_to_df(prices: list[Price]) -> pd.DataFrame:
 
 
 # Update the get_price_data function to use the new functions
-def get_price_data(ticker: str, start_date: str, end_date: str, api_key: str = None) -> pd.DataFrame:
-    prices = get_prices(ticker, start_date, end_date, api_key=api_key)
+def get_price_data(ticker: str, start_date: str, end_date: str, period: Period = Period.Min_60, api_key: str = None) -> pd.DataFrame:
+    prices = get_prices(ticker, start_date, end_date, period=period, api_key=api_key)
     return prices_to_df(prices)

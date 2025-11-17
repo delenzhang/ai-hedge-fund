@@ -6,6 +6,7 @@ import json
 import numpy as np
 import pandas as pd
 from src.utils.api_key import get_api_key_from_state
+from longport.openapi import TradeSessions, Period, AdjustType
 
 ##### Risk Management Agent #####
 def risk_management_agent(state: AgentState, agent_id: str = "risk_management_agent"):
@@ -32,6 +33,7 @@ def risk_management_agent(state: AgentState, agent_id: str = "risk_management_ag
             start_date=data["start_date"],
             end_date=data["end_date"],
             api_key=api_key,
+            period=Period.Day
         )
 
         if not prices:

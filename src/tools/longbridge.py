@@ -1,4 +1,5 @@
 import os
+from pickle import TRUE
 from longport.openapi import QuoteContext, Config, Period, AdjustType
 
 
@@ -29,7 +30,7 @@ def _get_longbridge_ctx() -> QuoteContext:
                 "  LB_ACCESS_TOKEN=你的access_token"
             )
         
-        config = Config(app_key=app_key, app_secret=app_secret, access_token=access_token)
+        config = Config(app_key=app_key, app_secret=app_secret, access_token=access_token,  enable_overnight=True)
         _longbridge_ctx = QuoteContext(config)
         print(f"✅ 已加载长桥API配置")
     

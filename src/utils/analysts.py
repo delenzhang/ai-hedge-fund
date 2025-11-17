@@ -142,7 +142,7 @@ ANALYST_CONFIG = {
         "type": "analyst",
         "order": 13,
     },
-    "news_sentiment_analyst": {
+    "news_sentiment": {
         "display_name": "新闻情绪分析师 / News Sentiment Analyst",
         "description": "新闻情绪专家 / News Sentiment Specialist",
         "investing_style": "分析新闻情绪以预测市场走势，并通过新闻分析识别机会。 / Analyzes news sentiment to predict market movements and identify opportunities through news analysis.",
