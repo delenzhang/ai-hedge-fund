@@ -5,6 +5,7 @@ import pandas as pd
 import requests
 import time
 from decimal import Decimal
+from typing import Any, Tuple
 from longport.openapi import TradeSessions, Period, AdjustType
 
 from src.data.cache import get_cache
@@ -26,6 +27,54 @@ from src.tools.longbridge import _get_longbridge_ctx
 
 # Global cache instance
 _cache = get_cache()
+
+def _handle_api_error_with_cache(
+    error_msg: str,
+    cache_type: str,
+    ticker: str,
+    cached_data: Any = None,
+    period: str = None,
+) -> Tuple[bool, Any]:
+    """
+    统一处理 API 错误时的缓存回退逻辑。
+    
+    Args:
+        error_msg: 错误消息
+        cache_type: 缓存类型（"prices", "financial_metrics", "line_items", "insider_trades", "company_news"）
+        ticker: 股票代码
+        cached_data: 已获取的缓存数据（如果为 None，则尝试从缓存中获取）
+        period: 周期参数（可选，用于某些缓存类型）
+        
+    Returns:
+        tuple[bool, any]: (是否有缓存数据, 缓存数据)
+    """
+    # 如果没有传入缓存数据，尝试从缓存中获取
+    if cached_data is None:
+        if cache_type == "prices" and period:
+            cached_data = _cache.get_prices(ticker, period)
+        elif cache_type == "financial_metrics" and period:
+            cached_data = _cache.get_financial_metrics(ticker, period)
+        elif cache_type == "line_items" and period:
+            cached_data = _cache.get_line_items(ticker, period)
+        elif cache_type == "insider_trades":
+            cached_data = _cache.get_insider_trades(ticker)
+        elif cache_type == "company_news":
+            cached_data = _cache.get_company_news(ticker)
+    
+    # 检查是否有缓存数据
+    has_cache = cached_data is not None and (
+        (isinstance(cached_data, list) and len(cached_data) > 0) or
+        (not isinstance(cached_data, list) and cached_data)
+    )
+    
+    if has_cache:
+        print(f"⚠️  API 调用失败: {error_msg}")
+        print(f"📦 使用缓存数据: {ticker} ({cache_type})")
+        return True, cached_data
+    else:
+        print(f"❌ API 调用失败: {error_msg}")
+        print(f"⚠️  无可用缓存数据: {ticker} ({cache_type})")
+        return False, None
 
 def _period_to_minutes(period: Period) -> int:
     """
@@ -127,9 +176,7 @@ def get_prices(ticker: str, start_date: str, end_date: str, period: Period = Per
         
     Returns:
         list[Price]: 价格数据列表，每个元素包含 open, close, high, low, volume, time
-        
-    Raises:
-        Exception: 当从长桥API获取数据失败时
+        如果 API 调用失败且无缓存数据，返回空列表
     """
     # Get current timestamp
     current_timestamp = time.time()
@@ -264,7 +311,24 @@ def get_prices(ticker: str, start_date: str, end_date: str, period: Period = Per
         return prices
         
     except Exception as e:
-        raise Exception(f"从长桥API获取数据时出错: {ticker} - {str(e)}")
+        # API 调用失败，尝试使用缓存数据
+        error_msg = f"从长桥API获取数据时出错: {ticker} - {str(e)}"
+        has_cache, cached_data = _handle_api_error_with_cache(
+            error_msg, "prices", ticker, cached_data, period_str
+        )
+        
+        if has_cache and cached_data:
+            # 过滤缓存数据 by date range
+            filtered_data = []
+            for price in cached_data:
+                time_str = price.get("time", "")
+                price_date = time_str[:10] if len(time_str) >= 10 else time_str
+                if start_date <= price_date <= end_date:
+                    filtered_data.append(Price(**price))
+            return filtered_data
+        
+        # 没有缓存数据，返回空列表
+        return []
 
 
 def get_financial_metrics(
@@ -302,18 +366,36 @@ def get_financial_metrics(
         url = f"https://api.financialdatasets.ai/financial-metrics/?ticker={ticker}&report_period_lte={today}&limit=100&period={period}"
         response = _make_api_request(url, headers)
         if response.status_code != 200:
-            return []
-            raise Exception(f"Error fetching data: {ticker} - {response.status_code} - {response.text}")
+            # API 调用失败，尝试使用缓存数据
+            error_msg = f"获取财务指标失败: {ticker} - HTTP {response.status_code}"
+            has_cache, cached_data = _handle_api_error_with_cache(
+                error_msg, "financial_metrics", ticker, cached_data, period
+            )
+            if has_cache:
+                # 使用缓存数据，继续后续的过滤逻辑
+                pass
+            else:
+                # 没有缓存数据，返回空列表
+                return []
+        else:
+            # Parse response with Pydantic model
+            try:
+                metrics_response = FinancialMetricsResponse(**response.json())
+                financial_metrics = metrics_response.financial_metrics
 
-        # Parse response with Pydantic model
-        metrics_response = FinancialMetricsResponse(**response.json())
-        financial_metrics = metrics_response.financial_metrics
-
-        if financial_metrics:
-            # Cache the results (only ticker and period in cache key) and update last_updated_date
-            _cache.set_financial_metrics(ticker, period, [m.model_dump() for m in financial_metrics], update_date=today)
-            # Update cached_data for filtering
-            cached_data = _cache.get_financial_metrics(ticker, period)
+                if financial_metrics:
+                    # Cache the results (only ticker and period in cache key) and update last_updated_date
+                    _cache.set_financial_metrics(ticker, period, [m.model_dump() for m in financial_metrics], update_date=today)
+                    # Update cached_data for filtering
+                    cached_data = _cache.get_financial_metrics(ticker, period)
+            except Exception as e:
+                # 解析响应失败，尝试使用缓存数据
+                error_msg = f"解析财务指标响应失败: {ticker} - {str(e)}"
+                has_cache, cached_data = _handle_api_error_with_cache(
+                    error_msg, "financial_metrics", ticker, cached_data, period
+                )
+                if not has_cache:
+                    return []
     
     # Filter cached data based on end_date and limit
     if not cached_data:
@@ -406,20 +488,37 @@ def search_line_items(
         }
         response = _make_api_request(url, headers, method="POST", json_data=body)
         
-        # If all attempts failed, raise error
         if response.status_code != 200:
-            return []
-            raise Exception(f"Error fetching data: {ticker} - {response.status_code} - {response.text}")
-        
-        data = response.json()
-        response_model = LineItemResponse(**data)
-        search_results = response_model.search_results
+            # API 调用失败，尝试使用缓存数据
+            error_msg = f"获取财务科目失败: {ticker} - HTTP {response.status_code}"
+            has_cache, cached_data = _handle_api_error_with_cache(
+                error_msg, "line_items", ticker, cached_data, period
+            )
+            if has_cache:
+                # 使用缓存数据，继续后续的过滤逻辑
+                pass
+            else:
+                # 没有缓存数据，返回空列表
+                return []
+        else:
+            try:
+                data = response.json()
+                response_model = LineItemResponse(**data)
+                search_results = response_model.search_results
 
-        if search_results:
-            # Cache all results (only ticker and period in cache key) and update last_updated_date
-            _cache.set_line_items(ticker, period, [item.model_dump() for item in search_results], update_date=today)
-            # Update cached_data for filtering
-            cached_data = _cache.get_line_items(ticker, period)
+                if search_results:
+                    # Cache all results (only ticker and period in cache key) and update last_updated_date
+                    _cache.set_line_items(ticker, period, [item.model_dump() for item in search_results], update_date=today)
+                    # Update cached_data for filtering
+                    cached_data = _cache.get_line_items(ticker, period)
+            except Exception as e:
+                # 解析响应失败，尝试使用缓存数据
+                error_msg = f"解析财务科目响应失败: {ticker} - {str(e)}"
+                has_cache, cached_data = _handle_api_error_with_cache(
+                    error_msg, "line_items", ticker, cached_data, period
+                )
+                if not has_cache:
+                    return []
     
     # Filter cached data based on line_items, end_date, and limit
     if not cached_data:
@@ -493,35 +592,58 @@ def get_insider_trades(
         current_end_date = today
 
         # Fetch one year of data by default
+        api_failed = False
         while True:
             url = f"https://api.financialdatasets.ai/insider-trades/?ticker={ticker}&filing_date_lte={current_end_date}&filing_date_gte={one_year_ago}&limit=1000"
 
             response = _make_api_request(url, headers)
             if response.status_code != 200:
-                # raise Exception(f"Error fetching data: {ticker} - {response.status_code} - {response.text}")
-                return []
+                # API 调用失败，尝试使用缓存数据
+                api_failed = True
+                error_msg = f"获取内部交易失败: {ticker} - HTTP {response.status_code}"
+                has_cache, cached_data = _handle_api_error_with_cache(
+                    error_msg, "insider_trades", ticker, cached_data
+                )
+                if has_cache:
+                    # 使用缓存数据，继续后续的过滤逻辑
+                    break
+                else:
+                    # 没有缓存数据，返回空列表
+                    return []
 
-            data = response.json()
-            response_model = InsiderTradeResponse(**data)
-            insider_trades = response_model.insider_trades
+            try:
+                data = response.json()
+                response_model = InsiderTradeResponse(**data)
+                insider_trades = response_model.insider_trades
 
-            if not insider_trades:
-                break
+                if not insider_trades:
+                    break
 
-            all_trades.extend(insider_trades)
+                all_trades.extend(insider_trades)
 
-            # Check if we got a full page
-            if len(insider_trades) < 1000:
-                break
+                # Check if we got a full page
+                if len(insider_trades) < 1000:
+                    break
 
-            # Update end_date to the oldest filing date from current batch for next iteration
-            current_end_date = min(trade.filing_date for trade in insider_trades).split("T")[0]
+                # Update end_date to the oldest filing date from current batch for next iteration
+                current_end_date = min(trade.filing_date for trade in insider_trades).split("T")[0]
 
-            # If we've reached or passed the start_date, we can stop
-            if current_end_date <= one_year_ago:
-                break
+                # If we've reached or passed the start_date, we can stop
+                if current_end_date <= one_year_ago:
+                    break
+            except Exception as e:
+                # 解析响应失败，尝试使用缓存数据
+                api_failed = True
+                error_msg = f"解析内部交易响应失败: {ticker} - {str(e)}"
+                has_cache, cached_data = _handle_api_error_with_cache(
+                    error_msg, "insider_trades", ticker, cached_data
+                )
+                if has_cache:
+                    break
+                else:
+                    return []
 
-        if all_trades:
+        if not api_failed and all_trades:
             # Cache the results (only ticker in cache key) and update last_updated_date
             _cache.set_insider_trades(ticker, [trade.model_dump() for trade in all_trades], update_date=today)
             # Update cached_data for filtering
@@ -591,37 +713,61 @@ def get_company_news(
         current_end_date = today
 
         # Fetch one year of data by default
+        api_failed = False
         while True:
             url = f"https://api.financialdatasets.ai/news/?ticker={ticker}&end_date={current_end_date}&start_date={one_year_ago}&limit=1000"
 
             response = _make_api_request(url, headers)
             if response.status_code == 404:
-                break;
+                # 404 表示没有数据，不是错误，直接退出
+                break
             if response.status_code != 200:
-                return []
-                raise Exception(f"Error fetching data: {ticker} - {response.status_code} - {response.text}")
+                # API 调用失败，尝试使用缓存数据
+                api_failed = True
+                error_msg = f"获取公司新闻失败: {ticker} - HTTP {response.status_code}"
+                has_cache, cached_data = _handle_api_error_with_cache(
+                    error_msg, "company_news", ticker, cached_data
+                )
+                if has_cache:
+                    # 使用缓存数据，继续后续的过滤逻辑
+                    break
+                else:
+                    # 没有缓存数据，返回空列表
+                    return []
 
-            data = response.json()
-            response_model = CompanyNewsResponse(**data)
-            company_news = response_model.news
+            try:
+                data = response.json()
+                response_model = CompanyNewsResponse(**data)
+                company_news = response_model.news
 
-            if not company_news:
-                break
+                if not company_news:
+                    break
 
-            all_news.extend(company_news)
+                all_news.extend(company_news)
 
-            # Check if we got a full page
-            if len(company_news) < 1000:
-                break
+                # Check if we got a full page
+                if len(company_news) < 1000:
+                    break
 
-            # Update end_date to the oldest date from current batch for next iteration
-            current_end_date = min(news.date for news in company_news).split("T")[0]
+                # Update end_date to the oldest date from current batch for next iteration
+                current_end_date = min(news.date for news in company_news).split("T")[0]
 
-            # If we've reached or passed the start_date, we can stop
-            if current_end_date <= one_year_ago:
-                break
+                # If we've reached or passed the start_date, we can stop
+                if current_end_date <= one_year_ago:
+                    break
+            except Exception as e:
+                # 解析响应失败，尝试使用缓存数据
+                api_failed = True
+                error_msg = f"解析公司新闻响应失败: {ticker} - {str(e)}"
+                has_cache, cached_data = _handle_api_error_with_cache(
+                    error_msg, "company_news", ticker, cached_data
+                )
+                if has_cache:
+                    break
+                else:
+                    return []
 
-        if all_news:
+        if not api_failed and all_news:
             # Cache the results (only ticker in cache key) and update last_updated_date
             _cache.set_company_news(ticker, [news.model_dump() for news in all_news], update_date=today)
             # Update cached_data for filtering
@@ -685,18 +831,44 @@ def get_market_cap(
             url = f"https://api.financialdatasets.ai/company/facts/?ticker={ticker}" # free
             response = _make_api_request(url, headers)
             if response.status_code != 200:
-                print(f"Error fetching company facts: {ticker} - {response.status_code}")
+                # API 调用失败，尝试使用缓存数据
+                error_msg = f"获取市值失败: {ticker} - HTTP {response.status_code}"
+                # 尝试获取最新的缓存市值（数据已按日期降序排序）
+                cached_market_cap_data = _cache.get_market_cap(ticker)
+                if cached_market_cap_data and len(cached_market_cap_data) > 0:
+                    latest_cached_market_cap = cached_market_cap_data[0].get("market_cap")
+                    if latest_cached_market_cap is not None:
+                        print(f"⚠️  {error_msg}")
+                        print(f"📦 使用缓存市值: {ticker} = {latest_cached_market_cap}")
+                        return latest_cached_market_cap
+                print(f"❌ {error_msg}")
+                print(f"⚠️  无可用缓存市值: {ticker}")
                 return None
 
-            data = response.json()
-            response_model = CompanyFactsResponse(**data)
-            market_cap = response_model.company_facts.market_cap
-            
-            # Cache the result
-            if market_cap is not None:
-                _cache.set_market_cap(ticker, [{"date": today, "market_cap": market_cap}])
-            
-            return market_cap
+            try:
+                data = response.json()
+                response_model = CompanyFactsResponse(**data)
+                market_cap = response_model.company_facts.market_cap
+                
+                # Cache the result
+                if market_cap is not None:
+                    _cache.set_market_cap(ticker, [{"date": today, "market_cap": market_cap}])
+                
+                return market_cap
+            except Exception as e:
+                # 解析响应失败，尝试使用缓存数据
+                error_msg = f"解析市值响应失败: {ticker} - {str(e)}"
+                # 尝试获取最新的缓存市值（数据已按日期降序排序）
+                cached_market_cap_data = _cache.get_market_cap(ticker)
+                if cached_market_cap_data and len(cached_market_cap_data) > 0:
+                    latest_cached_market_cap = cached_market_cap_data[0].get("market_cap")
+                    if latest_cached_market_cap is not None:
+                        print(f"⚠️  {error_msg}")
+                        print(f"📦 使用缓存市值: {ticker} = {latest_cached_market_cap}")
+                        return latest_cached_market_cap
+                print(f"❌ {error_msg}")
+                print(f"⚠️  无可用缓存市值: {ticker}")
+                return None
         else:
             # Cache exists and latest date is today, but no data for today
             # This shouldn't happen, but return None if it does
