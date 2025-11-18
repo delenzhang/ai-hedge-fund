@@ -1,5 +1,5 @@
 class CountInfo:
-  initial_cash = 0
+  initial_cash = 1500
   margin_requirement = 0.5
 
 # 可选：为每个股票设置不同的初始持仓

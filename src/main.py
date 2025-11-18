@@ -88,6 +88,8 @@ def run_hedge_fund(
         return {
             "decisions": parse_hedge_fund_response(final_state["messages"][-1].content),
             "analyst_signals": final_state["data"]["analyst_signals"],
+            "llm_analysis_content": final_state["data"].get("llm_analysis_content", {}),
+            "fed_rate_cut_expectation": final_state["data"].get("fed_rate_cut_expectation"),
         }
     finally:
         # Stop progress tracking

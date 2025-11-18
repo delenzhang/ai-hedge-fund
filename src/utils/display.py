@@ -136,6 +136,13 @@ def print_trading_output(result: dict, model_name: str = None, model_provider: s
 
         # Get reasoning and format it
         reasoning = decision.get("reasoning", "")
+        
+        # 获取AI的完整分析内容（如果存在）
+        llm_analysis = result.get("llm_analysis_content", {}).get(ticker, {})
+        if llm_analysis and llm_analysis.get("reasoning"):
+            # 如果AI分析内容中有更详细的推理，使用它
+            if isinstance(llm_analysis["reasoning"], str) and len(llm_analysis["reasoning"]) > len(reasoning):
+                reasoning = llm_analysis["reasoning"]
         # Wrap long reasoning text to make it more readable
         wrapped_reasoning = ""
         if reasoning:
@@ -174,6 +181,44 @@ def print_trading_output(result: dict, model_name: str = None, model_provider: s
         
         print(f"\n{Fore.WHITE}{Style.BRIGHT}交易决策 / TRADING DECISION:{Style.RESET_ALL} [{Fore.CYAN}{ticker}{Style.RESET_ALL}]")
         print(tabulate(decision_data, tablefmt="grid", colalign=("left", "left")))
+        
+        # 显示AI的完整分析内容（如果存在）
+        llm_analysis = result.get("llm_analysis_content", {}).get(ticker, {})
+        if llm_analysis:
+            ai_reasoning = llm_analysis.get("reasoning", "")
+            if ai_reasoning:
+                # 格式化AI分析内容
+                wrapped_ai_reasoning = ""
+                current_line = ""
+                max_line_length = 80
+                for word in str(ai_reasoning).split():
+                    if len(current_line) + len(word) + 1 > max_line_length:
+                        wrapped_ai_reasoning += current_line + "\n"
+                        current_line = word
+                    else:
+                        if current_line:
+                            current_line += " " + word
+                        else:
+                            current_line = word
+                if current_line:
+                    wrapped_ai_reasoning += current_line
+                
+                print(f"\n{Fore.WHITE}{Style.BRIGHT}AI完整分析 / AI FULL ANALYSIS:{Style.RESET_ALL} [{Fore.CYAN}{ticker}{Style.RESET_ALL}]")
+                print(f"{Fore.CYAN}{wrapped_ai_reasoning}{Style.RESET_ALL}")
+        
+        # 显示美联储降息预期数据（如果存在）
+        fed_expectation = result.get("fed_rate_cut_expectation")
+        if fed_expectation:
+            print(f"\n{Fore.WHITE}{Style.BRIGHT}美联储降息预期 / FED RATE CUT EXPECTATION:{Style.RESET_ALL}")
+            fed_data = [
+                ["降息 25 基点 / 25 bps decrease", f"{Fore.CYAN}{fed_expectation.get('cut_25bp', 0)*100:.1f}%{Style.RESET_ALL}"],
+                ["降息 50+ 基点 / 50+ bps decrease", f"{Fore.CYAN}{fed_expectation.get('cut_50bp_or_more', 0)*100:.1f}%{Style.RESET_ALL}"],
+                ["不变 / No change", f"{Fore.YELLOW}{fed_expectation.get('no_change', 0)*100:.1f}%{Style.RESET_ALL}"],
+                ["加息 25+ 基点 / 25+ bps increase", f"{Fore.RED}{fed_expectation.get('hike', 0)*100:.1f}%{Style.RESET_ALL}"],
+                [f"{Fore.WHITE}{Style.BRIGHT}总降息概率 / Total Cut Probability{Style.RESET_ALL}", 
+                 f"{Fore.GREEN}{Style.BRIGHT}{fed_expectation.get('total_cut_probability', 0)*100:.1f}%{Style.RESET_ALL}"],
+            ]
+            print(tabulate(fed_data, tablefmt="grid", colalign=("left", "right")))
         
         # 保存报告到文件
         save_report_to_file(ticker, decision, result.get("analyst_signals", {}), result, model_name, model_provider)
@@ -451,6 +496,13 @@ def generate_markdown_report(ticker: str, decision: dict, analyst_signals: dict,
     reasoning = decision.get("reasoning", "")
     suggested_price = decision.get("suggested_price")
     
+    # 获取AI的完整分析内容（如果存在）
+    llm_analysis = result.get("llm_analysis_content", {}).get(ticker, {})
+    if llm_analysis and llm_analysis.get("reasoning"):
+        # 如果AI分析内容中有更详细的推理，使用它
+        if isinstance(llm_analysis["reasoning"], str) and len(llm_analysis["reasoning"]) > len(reasoning):
+            reasoning = llm_analysis["reasoning"]
+    
     markdown.append("| 项目 | 内容 |\n")
     markdown.append("|------|------|\n")
     markdown.append(f"| 操作 / Action | {action} |\n")
@@ -461,6 +513,31 @@ def generate_markdown_report(ticker: str, decision: dict, analyst_signals: dict,
     else:
         markdown.append(f"| 建议价格 / Suggested Price | N/A |\n")
     markdown.append(f"| 推理 / Reasoning | {reasoning.replace('|', '\\|').replace('\n', '<br>')} |\n")
+    
+    # 添加AI完整分析内容（如果存在）
+    if llm_analysis:
+        ai_reasoning = llm_analysis.get("reasoning", "")
+        if ai_reasoning:
+            markdown.append(f"\n### AI完整分析 / AI FULL ANALYSIS: [{ticker}]\n\n")
+            markdown.append(f"```\n{ai_reasoning.replace('```', '\\`\\`\\`')}\n```\n\n")
+    
+    # 添加美联储降息预期数据（如果存在）
+    fed_expectation = result.get("fed_rate_cut_expectation")
+    if fed_expectation:
+        markdown.append(f"\n### 美联储降息预期 / FED RATE CUT EXPECTATION\n\n")
+        markdown.append("| 项目 | 概率 |\n")
+        markdown.append("|------|------|\n")
+        if "cut_25bp" in fed_expectation:
+            markdown.append(f"| 降息 25 基点 / 25 bps decrease | {fed_expectation['cut_25bp']*100:.1f}% |\n")
+        if "cut_50bp_or_more" in fed_expectation:
+            markdown.append(f"| 降息 50+ 基点 / 50+ bps decrease | {fed_expectation['cut_50bp_or_more']*100:.1f}% |\n")
+        if "no_change" in fed_expectation:
+            markdown.append(f"| 不变 / No change | {fed_expectation['no_change']*100:.1f}% |\n")
+        if "hike" in fed_expectation:
+            markdown.append(f"| 加息 25+ 基点 / 25+ bps increase | {fed_expectation['hike']*100:.1f}% |\n")
+        if "total_cut_probability" in fed_expectation:
+            markdown.append(f"| **总降息概率 / Total Cut Probability** | **{fed_expectation['total_cut_probability']*100:.1f}%** |\n")
+        markdown.append("\n")
     
     # 投资组合摘要（仅当前股票）
     markdown.append(f"\n## 投资组合摘要 / PORTFOLIO SUMMARY\n")

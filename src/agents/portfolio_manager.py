@@ -20,6 +20,8 @@ from src.utils.progress import progress
 from src.utils.llm import call_llm
 # 导入投资组合经理的提示消息生成函数
 from src.agents.contexts.portfolio_manager import get_prompt_messages
+# 导入获取美联储降息预期数据的函数
+from src.tools.api import get_fed_rate_cut_expectation
 
 
 # 定义投资组合决策数据模型
@@ -140,6 +142,13 @@ def portfolio_management_agent(state: AgentState, agent_id: str = "portfolio_man
     # 将当前价格存储到状态中，供后续使用
     state["data"]["current_prices"] = current_prices
 
+    # 获取美联储降息预期数据
+    # fed_expectation 运行时格式: {"cut_25bp": 0.43, "cut_50bp_or_more": 0.018, "no_change": 0.54, "hike": 0.001, "total_cut_probability": 0.448}
+    fed_expectation = get_fed_rate_cut_expectation()
+    print("联储降息", fed_expectation)
+    # 将降息预期数据存储到状态中
+    state["data"]["fed_rate_cut_expectation"] = fed_expectation
+
     # 更新进度状态：正在生成交易决策
     progress.update_status(agent_id, None, "Generating trading decisions")
 
@@ -153,6 +162,7 @@ def portfolio_management_agent(state: AgentState, agent_id: str = "portfolio_man
         portfolio=portfolio,  # {"cash": 100000.0, "positions": {...}, ...}
         agent_id=agent_id,  # "portfolio_manager" 或 "portfolio_manager_xxx"
         state=state,  # 完整的 AgentState 对象
+        fed_expectation=fed_expectation,  # 美联储降息预期数据
     )
     
     # 创建 HumanMessage 对象，包含交易决策的 JSON 序列化内容
@@ -378,6 +388,7 @@ def _compact_signals(signals_by_ticker: dict[str, dict]) -> dict[str, dict]:
 # } - 投资组合信息
 # agent_id 运行时值: "portfolio_manager" 或 "portfolio_manager_xxx" - 代理 ID
 # state 运行时格式: 完整的 AgentState 对象，包含 data、messages、metadata
+# fed_expectation 运行时格式: {"cut_25bp": 0.43, "cut_50bp_or_more": 0.018, "no_change": 0.54, "hike": 0.001, "total_cut_probability": 0.448} - 美联储降息预期
 # 返回值运行时格式: PortfolioManagerOutput(decisions={"PYPL": PortfolioDecision(...), "BABA": PortfolioDecision(...)})
 def generate_trading_decision(
         tickers: list[str],
@@ -387,6 +398,7 @@ def generate_trading_decision(
         portfolio: dict[str, float],
         agent_id: str,
         state: AgentState,
+        fed_expectation: dict[str, float] | None = None,
 ) -> PortfolioManagerOutput:
     """使用确定性约束和最小化提示从 LLM 获取决策"""
 
@@ -448,13 +460,19 @@ def generate_trading_decision(
     # prompt_data 运行时格式: {
     #   "signals": '{"PYPL":{"aswath_damodaran_agent":{"sig":"bullish","conf":85},...},"BABA":{...}}',
     #   "allowed": '{"PYPL":{"buy":332,"sell":100,"hold":0},"BABA":{...}}',
-    #   "prices": '{"PYPL":150.5,"BABA":80.2}'
+    #   "prices": '{"PYPL":150.5,"BABA":80.2}',
+    #   "fed_expectation": '{"cut_25bp":0.43,"cut_50bp_or_more":0.018,"no_change":0.54,"hike":0.001,"total_cut_probability":0.448}'
     # }
     prompt_data = {
         "signals": json.dumps(compact_signals, separators=(",", ":"), ensure_ascii=False),  # 紧凑 JSON，无空格，保留中文字符
         "allowed": json.dumps(compact_allowed, separators=(",", ":"), ensure_ascii=False),  # 紧凑 JSON，无空格
         "prices": json.dumps(compact_prices, separators=(",", ":"), ensure_ascii=False),  # 紧凑 JSON，无空格
     }
+    # 如果存在降息预期数据，添加到提示数据中
+    if fed_expectation:
+        prompt_data["fed_expectation"] = json.dumps(fed_expectation, separators=(",", ":"), ensure_ascii=False)
+    else:
+        prompt_data["fed_expectation"] = "null"
     # 调用模板生成提示
     prompt = template.invoke(prompt_data)
     # 调试输出：打印信号数据（临时，用于调试）
@@ -487,6 +505,27 @@ def generate_trading_decision(
         state=state,  # 完整状态对象
         default_factory=create_default_portfolio_output,  # 失败时的默认工厂函数
     )
+    
+    # 保存 LLM 的完整分析内容到状态中，供展示使用
+    # 将决策转换为字典格式，包含完整的推理信息
+    # 注意：这里保存的是LLM返回的完整决策信息，包括详细的reasoning
+    llm_analysis_content = {}
+    for ticker, decision in llm_out.decisions.items():
+        # 保存完整的决策信息，包括详细的推理
+        llm_analysis_content[ticker] = {
+            "action": decision.action,
+            "quantity": decision.quantity,
+            "confidence": decision.confidence,
+            "reasoning": decision.reasoning,  # 这是LLM生成的完整推理
+            "suggested_price": decision.suggested_price,
+        }
+        # 如果推理很短，可能是默认值，尝试从决策中获取更详细的信息
+        if not decision.reasoning or len(decision.reasoning) < 20:
+            # 如果推理太短，可能是默认值，保留它但标记
+            pass
+    
+    # 将AI分析内容存储到状态中
+    state["data"]["llm_analysis_content"] = llm_analysis_content
 
     # 合并预填充的持有决策和 LLM 结果
     # merged 运行时格式: {"NIO": PortfolioDecision(...), "PYPL": PortfolioDecision(...), "BABA": PortfolioDecision(...)}
