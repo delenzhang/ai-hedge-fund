@@ -25,8 +25,14 @@ initial_positions = {
             "short_cost_basis": 0.0,
         },
         "NIO": {
-            "long": 100,
-            "long_cost_basis": -15,
+            "long": 150,
+            "long_cost_basis": -8.5,
+            "short": 0,
+            "short_cost_basis": 0.0,
+        },
+        "MP": {
+            "long": 55,
+            "long_cost_basis": 70,
             "short": 0,
             "short_cost_basis": 0.0,
         },
@@ -50,6 +56,10 @@ initial_realized_gains = {
         },
         "NIO": {
             "long": 2232,
+            "short": 0.0,
+        },
+        "MP": {
+            "long": -764,
             "short": 0.0,
         }
     }

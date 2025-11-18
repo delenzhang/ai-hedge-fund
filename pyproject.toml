@@ -38,6 +38,8 @@ langchain-gigachat = "^0.3.12"
 langchain-xai = "^0.2.5"
 longport = "3.0.17"
 bs4 = "^0.0.2"
+requests = "^2.31.0"
+pysocks = "^1.7.1"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^7.4.0"

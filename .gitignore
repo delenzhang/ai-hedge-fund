@@ -68,3 +68,4 @@ app/backend/alembic/versions/__pycache__/
 
 .cache
 report
+v2ray_config.json
