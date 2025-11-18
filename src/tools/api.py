@@ -302,6 +302,7 @@ def get_financial_metrics(
         url = f"https://api.financialdatasets.ai/financial-metrics/?ticker={ticker}&report_period_lte={today}&limit=100&period={period}"
         response = _make_api_request(url, headers)
         if response.status_code != 200:
+            return []
             raise Exception(f"Error fetching data: {ticker} - {response.status_code} - {response.text}")
 
         # Parse response with Pydantic model
@@ -407,6 +408,7 @@ def search_line_items(
         
         # If all attempts failed, raise error
         if response.status_code != 200:
+            return []
             raise Exception(f"Error fetching data: {ticker} - {response.status_code} - {response.text}")
         
         data = response.json()
@@ -496,7 +498,8 @@ def get_insider_trades(
 
             response = _make_api_request(url, headers)
             if response.status_code != 200:
-                raise Exception(f"Error fetching data: {ticker} - {response.status_code} - {response.text}")
+                # raise Exception(f"Error fetching data: {ticker} - {response.status_code} - {response.text}")
+                return []
 
             data = response.json()
             response_model = InsiderTradeResponse(**data)
@@ -595,6 +598,7 @@ def get_company_news(
             if response.status_code == 404:
                 break;
             if response.status_code != 200:
+                return []
                 raise Exception(f"Error fetching data: {ticker} - {response.status_code} - {response.text}")
 
             data = response.json()
@@ -731,179 +735,3 @@ def prices_to_df(prices: list[Price]) -> pd.DataFrame:
 def get_price_data(ticker: str, start_date: str, end_date: str, period: Period = Period.Min_60, api_key: str = None) -> pd.DataFrame:
     prices = get_prices(ticker, start_date, end_date, period=period, api_key=api_key)
     return prices_to_df(prices)
-
-
-def get_fed_rate_cut_expectation(url: str = "https://polymarket.com/event/fed-decision-in-december?tid=1763218927996") -> dict[str, float] | None:
-    """
-    从 Polymarket 获取美联储降息预期数据。
-    
-    Args:
-        url: Polymarket 事件页面 URL，默认为 12 月美联储决策事件
-        
-    Returns:
-        dict: 包含降息预期的字典，格式为 {
-            "cut_25bp": 0.43,  # 降息 25 个基点的概率
-            "cut_50bp_or_more": 0.018,  # 降息 50 个基点或更多的概率
-            "no_change": 0.54,  # 不变的概率
-            "hike": 0.001,  # 加息的概率
-            "total_cut_probability": 0.448  # 总降息概率（25bp + 50bp+）
-        }
-        如果获取失败，返回 None
-    """
-    try:
-        from bs4 import BeautifulSoup
-        import re
-        
-        headers = {
-            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/91.0.4472.124 Safari/537.36"
-        }
-        
-        response = _make_api_request(url, headers, method="GET")
-        if response.status_code != 200:
-            print(f"无法获取 Polymarket 数据: HTTP {response.status_code}")
-            return None
-        
-        # 尝试从 HTML 中提取数据
-        soup = BeautifulSoup(response.text, 'html.parser')
-        
-        # Polymarket 通常使用 JSON-LD 或内联 JSON 来存储市场数据
-        # 尝试查找包含市场数据的 script 标签
-        scripts = soup.find_all('script', type='application/json')
-        market_data = None
-        
-        for script in scripts:
-            try:
-                data = json.loads(script.string)
-                # 查找包含市场概率的数据结构
-                if isinstance(data, dict) and ('market' in str(data).lower() or 'probability' in str(data).lower()):
-                    market_data = data
-                    break
-            except:
-                continue
-        
-        # 如果找不到 JSON 数据，尝试从文本中提取概率信息
-        if market_data is None:
-            # 查找包含百分比数字的文本
-            text = soup.get_text()
-            
-            # 使用用户提供的具体文案来匹配
-            # No change 54%
-            # 25 bps decrease 43%
-            # 50+ bps decrease 1.8%
-            # 25+ bps increase <1%
-            
-            result = {
-                "cut_25bp": 0.0,
-                "cut_50bp_or_more": 0.0,
-                "no_change": 0.0,
-                "hike": 0.0,
-                "total_cut_probability": 0.0
-            }
-            
-            # 匹配 "No change 54%" 格式
-            no_change_patterns = [
-                r'No\s+change\s+(\d+\.?\d*)\s*%',  # "No change 54%"
-                r'(\d+\.?\d*)\s*%\s*No\s+change',  # "54% No change"
-                r'不变\s+(\d+\.?\d*)\s*%',  # "不变 54%"
-            ]
-            for pattern in no_change_patterns:
-                match = re.search(pattern, text, re.IGNORECASE)
-                if match:
-                    result["no_change"] = float(match.group(1)) / 100.0
-                    break
-            
-            # 匹配 "25 bps decrease 43%" 格式
-            cut_25_patterns = [
-                r'25\s*bps?\s*decrease\s+(\d+\.?\d*)\s*%',  # "25 bps decrease 43%"
-                r'(\d+\.?\d*)\s*%\s*25\s*bps?\s*decrease',  # "43% 25 bps decrease"
-                r'25\s*基点\s*降息\s+(\d+\.?\d*)\s*%',  # "25 基点 降息 43%"
-            ]
-            for pattern in cut_25_patterns:
-                match = re.search(pattern, text, re.IGNORECASE)
-                if match:
-                    result["cut_25bp"] = float(match.group(1)) / 100.0
-                    break
-            
-            # 匹配 "50+ bps decrease 1.8%" 格式
-            cut_50_patterns = [
-                r'50\+?\s*bps?\s*decrease\s+(\d+\.?\d*)\s*%',  # "50+ bps decrease 1.8%"
-                r'(\d+\.?\d*)\s*%\s*50\+?\s*bps?\s*decrease',  # "1.8% 50+ bps decrease"
-                r'50\+?\s*基点\s*降息\s+(\d+\.?\d*)\s*%',  # "50+ 基点 降息 1.8%"
-            ]
-            for pattern in cut_50_patterns:
-                match = re.search(pattern, text, re.IGNORECASE)
-                if match:
-                    result["cut_50bp_or_more"] = float(match.group(1)) / 100.0
-                    break
-            
-            # 匹配 "25+ bps increase <1%" 或 "<1%" 格式
-            hike_patterns = [
-                r'25\+?\s*bps?\s*increase\s*<(\d+\.?\d*)\s*%',  # "25+ bps increase <1%"
-                r'<(\d+\.?\d*)\s*%\s*25\+?\s*bps?\s*increase',  # "<1% 25+ bps increase"
-                r'25\+?\s*bps?\s*increase\s+(\d+\.?\d*)\s*%',  # "25+ bps increase 1%"
-                r'(\d+\.?\d*)\s*%\s*25\+?\s*bps?\s*increase',  # "1% 25+ bps increase"
-                r'25\+?\s*基点\s*加息\s*<(\d+\.?\d*)\s*%',  # "25+ 基点 加息 <1%"
-            ]
-            for pattern in hike_patterns:
-                match = re.search(pattern, text, re.IGNORECASE)
-                if match:
-                    result["hike"] = float(match.group(1)) / 100.0
-                    break
-            
-            # 如果所有值都是 0，说明没有匹配到，返回默认值
-            if sum(result.values()) == 0:
-                print("警告: 无法从 HTML 中解析 Polymarket 数据，尝试使用默认值")
-                return {
-                    "cut_25bp": 0.43,
-                    "cut_50bp_or_more": 0.018,
-                    "no_change": 0.54,
-                    "hike": 0.001,
-                    "total_cut_probability": 0.448
-                }
-            
-            result["total_cut_probability"] = result["cut_25bp"] + result["cut_50bp_or_more"]
-            return result
-        
-        # 解析市场数据（这里需要根据实际的 Polymarket 数据结构来调整）
-        # 由于 Polymarket 的数据结构可能变化，这里提供一个通用的解析逻辑
-        result = {
-            "cut_25bp": 0.0,
-            "cut_50bp_or_more": 0.0,
-            "no_change": 0.0,
-            "hike": 0.0,
-            "total_cut_probability": 0.0
-        }
-        
-        # 尝试从 market_data 中提取概率
-        # 注意：这需要根据实际的 Polymarket API 响应格式来调整
-        if isinstance(market_data, dict):
-            # 查找包含 "25" 和 "cut" 或 "rate" 的键
-            for key, value in market_data.items():
-                key_lower = str(key).lower()
-                if '25' in key_lower and ('cut' in key_lower or 'rate' in key_lower):
-                    if isinstance(value, (int, float)):
-                        result["cut_25bp"] = float(value) / 100.0 if value > 1 else float(value)
-                elif '50' in key_lower and ('cut' in key_lower or 'rate' in key_lower):
-                    if isinstance(value, (int, float)):
-                        result["cut_50bp_or_more"] = float(value) / 100.0 if value > 1 else float(value)
-                elif 'no' in key_lower and 'change' in key_lower:
-                    if isinstance(value, (int, float)):
-                        result["no_change"] = float(value) / 100.0 if value > 1 else float(value)
-                elif 'hike' in key_lower or 'increase' in key_lower:
-                    if isinstance(value, (int, float)):
-                        result["hike"] = float(value) / 100.0 if value > 1 else float(value)
-        
-        result["total_cut_probability"] = result["cut_25bp"] + result["cut_50bp_or_more"]
-        
-        return result
-        
-    except Exception as e:
-        print(f"获取 Polymarket 降息预期数据时出错: {str(e)}")
-        # 返回默认值，避免影响交易决策
-        return {
-            "cut_25bp": 0.43,
-            "cut_50bp_or_more": 0.018,
-            "no_change": 0.54,
-            "hike": 0.001,
-            "total_cut_probability": 0.448
-        }

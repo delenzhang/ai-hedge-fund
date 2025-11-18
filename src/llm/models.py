@@ -39,6 +39,8 @@ class LLMModel(BaseModel):
     display_name: str
     model_name: str
     provider: ModelProvider
+    API_KEY_ENV: str | None = None
+    BASE_URL: str | None = None
 
     def to_choice_tuple(self) -> Tuple[str, str, str]:
         """Convert to format needed for questionary choices"""
@@ -88,6 +90,8 @@ def load_models_from_json(json_path: str) -> List[LLMModel]:
                 display_name=model_data["display_name"],
                 model_name=model_data["model_name"],
                 provider=provider_enum,
+                API_KEY_ENV=model_data.get("API_KEY_ENV"),
+                BASE_URL=model_data.get("BASE_URL"),
             )
         )
 
@@ -145,13 +149,20 @@ def get_model(model_name: str, model_provider: ModelProvider, api_keys: dict = N
             raise ValueError("Groq API key not found.  Please make sure GROQ_API_KEY is set in your .env file or provided via API keys.")
         return ChatGroq(model=model_name, api_key=api_key)
     elif model_provider == ModelProvider.OPENAI:
+        # Get model info to check for custom API_KEY_ENV and BASE_URL
+        model_info = get_model_info(model_name, model_provider)
+        
+        # Use custom environment variable names if specified, otherwise use defaults
+        api_key_env = model_info.API_KEY_ENV if model_info and model_info.API_KEY_ENV else "OPENAI_API_KEY"
+        base_url_env = model_info.BASE_URL if model_info and model_info.BASE_URL else "OPENAI_API_BASE"
+        
         # Get and validate API key
-        api_key = (api_keys or {}).get("OPENAI_API_KEY") or os.getenv("OPENAI_API_KEY")
-        base_url = os.getenv("OPENAI_API_BASE")
+        api_key = (api_keys or {}).get(api_key_env) or os.getenv(api_key_env)
+        base_url = os.getenv(base_url_env)
         if not api_key:
             # Print error to console
-            print(f"API Key Error: Please make sure OPENAI_API_KEY is set in your .env file or provided via API keys.")
-            raise ValueError("OpenAI API key not found.  Please make sure OPENAI_API_KEY is set in your .env file or provided via API keys.")
+            print(f"API Key Error: Please make sure {api_key_env} is set in your .env file or provided via API keys.")
+            raise ValueError(f"OpenAI API key not found.  Please make sure {api_key_env} is set in your .env file or provided via API keys.")
         return ChatOpenAI(model=model_name, api_key=api_key, base_url=base_url)
     elif model_provider == ModelProvider.ANTHROPIC:
         api_key = (api_keys or {}).get("ANTHROPIC_API_KEY") or os.getenv("ANTHROPIC_API_KEY")

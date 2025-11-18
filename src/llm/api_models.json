@@ -1,8 +1,10 @@
 [
   {
-    "display_name": "qwen3-235b-a22b",
-    "model_name": "qwen3-235b-a22b",
-    "provider": "OpenAI"
+    "display_name": "qwen3-max",
+    "model_name": "qwen3-max",
+    "provider": "OpenAI",
+    "API_KEY_ENV": "QWEN3_MAX_KEY",
+    "BASE_URL": "QWEN3_MAX_BASE"
   },
   {
     "display_name": "deepseek-v3",

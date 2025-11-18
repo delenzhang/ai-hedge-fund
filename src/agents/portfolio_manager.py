@@ -21,7 +21,7 @@ from src.utils.llm import call_llm
 # 导入投资组合经理的提示消息生成函数
 from src.agents.contexts.portfolio_manager import get_prompt_messages
 # 导入获取美联储降息预期数据的函数
-from src.tools.api import get_fed_rate_cut_expectation
+from src.tools.data_api import get_fed_rate_cut_expectation
 
 
 # 定义投资组合决策数据模型
