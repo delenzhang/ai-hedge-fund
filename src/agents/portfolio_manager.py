@@ -22,6 +22,8 @@ from src.utils.llm import call_llm
 from src.agents.contexts.portfolio_manager import get_prompt_messages
 # 导入获取美联储降息预期数据的函数
 from src.tools.data_api import get_fed_rate_cut_expectation
+# 导入新闻管理代理
+from src.agents.news_manager import filter_news_for_tickers
 
 
 # 定义投资组合决策数据模型
@@ -148,6 +150,13 @@ def portfolio_management_agent(state: AgentState, agent_id: str = "portfolio_man
     print("联储降息", fed_expectation)
     # 将降息预期数据存储到状态中
     state["data"]["fed_rate_cut_expectation"] = fed_expectation
+    
+    # 使用新闻管理代理筛选相关新闻（会自动更新缓存并使用近半年的新闻）
+    # filtered_news_by_ticker 运行时格式: {"PYPL": [相关新闻列表], "BABA": [相关新闻列表], ...}
+    filtered_news_by_ticker = filter_news_for_tickers(tickers, agent_id, state, days=180)
+    print(f"新闻筛选完成，各股票相关新闻数量: {[(t, len(n)) for t, n in filtered_news_by_ticker.items()]}")
+    # 将筛选后的新闻存储到状态中
+    state["data"]["filtered_news_by_ticker"] = filtered_news_by_ticker
 
     # 更新进度状态：正在生成交易决策
     progress.update_status(agent_id, None, "Generating trading decisions")
@@ -163,6 +172,7 @@ def portfolio_management_agent(state: AgentState, agent_id: str = "portfolio_man
         agent_id=agent_id,  # "portfolio_manager" 或 "portfolio_manager_xxx"
         state=state,  # 完整的 AgentState 对象
         fed_expectation=fed_expectation,  # 美联储降息预期数据
+        filtered_news_by_ticker=filtered_news_by_ticker,  # 筛选后的新闻（按股票分组）
     )
     
     # 创建 HumanMessage 对象，包含交易决策的 JSON 序列化内容
@@ -320,6 +330,66 @@ def compute_allowed_actions(
     return allowed
 
 
+# 格式化新闻数据，添加中英文对照，便于模型理解
+def format_news_for_prompt(filtered_news_by_ticker: dict[str, list[dict]]) -> str:
+    """
+    将筛选后的新闻格式化为易读的字符串，包含中英文对照
+    
+    参数:
+        filtered_news_by_ticker: 按股票分组的新闻字典，格式: {"PYPL": [新闻列表], "BABA": [新闻列表]}
+    
+    返回:
+        格式化后的新闻字符串，包含中英文对照
+    """
+    if not filtered_news_by_ticker:
+        return "无相关新闻 / No relevant news"
+    
+    formatted_lines = []
+    
+    for ticker, news_list in filtered_news_by_ticker.items():
+        if not news_list:
+            continue
+        
+        formatted_lines.append(f"\n【{ticker}】相关新闻 / Relevant News for {ticker}:")
+        formatted_lines.append("=" * 60)
+        
+        for idx, news_item in enumerate(news_list, 1):
+            title = news_item.get("title", "")
+            title_cn = news_item.get("title_cn", "")
+            datetime_str = news_item.get("datetime", "")
+            labels = news_item.get("labels", [])
+            relevance_reason = news_item.get("relevance_reason", "相关新闻")
+            
+            # 格式化标题（中英文对照）
+            if title_cn and title_cn != title:
+                title_display = f"{title} / {title_cn}"
+            else:
+                title_display = title if title else "无标题 / No title"
+            
+            # 格式化标签（标签通常是英文术语，保持原样）
+            if labels:
+                labels_str = ", ".join(labels)
+                labels_display = labels_str  # 标签通常是英文术语，不需要翻译
+            else:
+                labels_display = "无标签 / No labels"
+            
+            # 格式化时间（时间格式统一，保持原样）
+            time_display = datetime_str
+            
+            # 构建新闻条目
+            formatted_lines.append(f"\n新闻 {idx} / News {idx}:")
+            formatted_lines.append(f"  时间 / Time: {time_display}")
+            formatted_lines.append(f"  标签 / Labels: {labels_display}")
+            formatted_lines.append(f"  标题 / Title: {title_display}")
+            formatted_lines.append(f"  入选理由 / Relevance Reason: {relevance_reason}")
+            
+            # 添加分隔线
+            if idx < len(news_list):
+                formatted_lines.append("-" * 60)
+    
+    return "\n".join(formatted_lines) if formatted_lines else "无相关新闻 / No relevant news"
+
+
 # 压缩信号数据，只保留 {agent: {sig, conf}} 格式并丢弃空代理
 # signals_by_ticker 运行时格式: {
 #   "PYPL": {
@@ -399,6 +469,7 @@ def generate_trading_decision(
         agent_id: str,
         state: AgentState,
         fed_expectation: dict[str, float] | None = None,
+        filtered_news_by_ticker: dict[str, list[dict]] | None = None,
 ) -> PortfolioManagerOutput:
     """使用确定性约束和最小化提示从 LLM 获取决策"""
 
@@ -451,6 +522,8 @@ def generate_trading_decision(
     compact_allowed = {t: allowed_actions_full[t] for t in tickers_for_llm}
     # compact_prices 运行时格式: {"PYPL": 150.5, "BABA": 80.2} - 只包含需要 LLM 处理的股票
     compact_prices = {t: current_prices.get(t, 0.0) for t in tickers_for_llm}
+    # compact_filtered_news 运行时格式: {"PYPL": [相关新闻列表], "BABA": [相关新闻列表]} - 只包含需要 LLM 处理的股票
+    compact_filtered_news = {t: filtered_news_by_ticker.get(t, []) if filtered_news_by_ticker else [] for t in tickers_for_llm}
 
     # 构建给大模型的提示模板
     # 这个提示用于让大模型作为投资组合经理，基于分析师信号和允许的操作做出交易决策
@@ -473,6 +546,13 @@ def generate_trading_decision(
         prompt_data["fed_expectation"] = json.dumps(fed_expectation, separators=(",", ":"), ensure_ascii=False)
     else:
         prompt_data["fed_expectation"] = "null"
+    
+    # 如果存在筛选后的新闻，格式化并添加到提示数据中（按股票分组，中英文对照）
+    if compact_filtered_news:
+        formatted_news = format_news_for_prompt(compact_filtered_news)
+        prompt_data["latest_news"] = formatted_news
+    else:
+        prompt_data["latest_news"] = "无相关新闻 / No relevant news"
     # 调用模板生成提示
     prompt = template.invoke(prompt_data)
     # 调试输出：打印信号数据（临时，用于调试）

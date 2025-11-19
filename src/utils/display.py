@@ -220,6 +220,46 @@ def print_trading_output(result: dict, model_name: str = None, model_provider: s
             ]
             print(tabulate(fed_data, tablefmt="grid", colalign=("left", "right")))
         
+        # 显示相关新闻（如果存在）
+        filtered_news_by_ticker = result.get("filtered_news_by_ticker", {})
+        ticker_news = filtered_news_by_ticker.get(ticker, [])
+        if ticker_news:
+            print(f"\n{Fore.WHITE}{Style.BRIGHT}相关新闻 / RELEVANT NEWS:{Style.RESET_ALL} [{Fore.CYAN}{ticker}{Style.RESET_ALL}]")
+            print(f"{Fore.WHITE}{Style.BRIGHT}{'=' * 70}{Style.RESET_ALL}")
+            
+            for idx, news_item in enumerate(ticker_news, 1):
+                news_title = news_item.get("title", "")
+                news_title_cn = news_item.get("title_cn", "")
+                news_datetime = news_item.get("datetime", "")
+                news_labels = news_item.get("labels", [])
+                news_url = news_item.get("url", "")
+                relevance_reason = news_item.get("relevance_reason", "相关新闻")
+                
+                # 格式化标题（中英文对照）
+                if news_title_cn and news_title_cn != news_title:
+                    title_display = f"{Fore.GREEN}{news_title}{Style.RESET_ALL} / {Fore.CYAN}{news_title_cn}{Style.RESET_ALL}"
+                else:
+                    title_display = f"{Fore.GREEN}{news_title if news_title else '无标题'}{Style.RESET_ALL}"
+                
+                # 格式化标签（标签通常是英文术语，保持原样）
+                if news_labels:
+                    labels_str = ", ".join(news_labels)
+                    labels_display = f"{Fore.CYAN}[{labels_str}]{Style.RESET_ALL}"
+                else:
+                    labels_display = f"{Fore.CYAN}无标签{Style.RESET_ALL} / No labels"
+                
+                # 显示新闻信息
+                print(f"\n{Fore.YELLOW}{Style.BRIGHT}新闻 {idx} / News {idx}:{Style.RESET_ALL}")
+                print(f"  {Fore.WHITE}时间 / Time:{Style.RESET_ALL} {Fore.CYAN}{news_datetime}{Style.RESET_ALL}")
+                print(f"  {Fore.WHITE}标签 / Labels:{Style.RESET_ALL} {labels_display}")
+                print(f"  {Fore.WHITE}标题 / Title:{Style.RESET_ALL} {title_display}")
+                if news_url:
+                    print(f"  {Fore.WHITE}链接 / URL:{Style.RESET_ALL} {Fore.CYAN}{news_url}{Style.RESET_ALL}")
+                print(f"  {Fore.WHITE}入选理由 / Relevance Reason:{Style.RESET_ALL} {Fore.YELLOW}{relevance_reason}{Style.RESET_ALL}")
+        else:
+            print(f"\n{Fore.WHITE}{Style.BRIGHT}相关新闻 / RELEVANT NEWS:{Style.RESET_ALL} [{Fore.CYAN}{ticker}{Style.RESET_ALL}]")
+            print(f"{Fore.YELLOW}未找到相关新闻 / No relevant news found{Style.RESET_ALL}")
+        
         # 保存报告到文件
         save_report_to_file(ticker, decision, result.get("analyst_signals", {}), result, model_name, model_provider)
 
@@ -538,6 +578,48 @@ def generate_markdown_report(ticker: str, decision: dict, analyst_signals: dict,
         if "total_cut_probability" in fed_expectation:
             markdown.append(f"| **总降息概率 / Total Cut Probability** | **{fed_expectation['total_cut_probability']*100:.1f}%** |\n")
         markdown.append("\n")
+    
+    # 添加相关新闻（如果存在）
+    filtered_news_by_ticker = result.get("filtered_news_by_ticker", {})
+    ticker_news = filtered_news_by_ticker.get(ticker, [])
+    if ticker_news:
+        markdown.append(f"\n### 相关新闻 / RELEVANT NEWS: [{ticker}]\n\n")
+        
+        for idx, news_item in enumerate(ticker_news, 1):
+            news_title = news_item.get("title", "")
+            news_title_cn = news_item.get("title_cn", "")
+            news_datetime = news_item.get("datetime", "")
+            news_labels = news_item.get("labels", [])
+            news_url = news_item.get("url", "")
+            relevance_reason = news_item.get("relevance_reason", "相关新闻")
+            
+            # 格式化标题（中英文对照）
+            if news_title_cn and news_title_cn != news_title:
+                title_display = f"{news_title.replace('|', '\\|')} / {news_title_cn.replace('|', '\\|')}"
+            else:
+                title_display = news_title.replace('|', '\\|') if news_title else "无标题 / No title"
+            
+            # 格式化标签（标签通常是英文术语，保持原样）
+            if news_labels:
+                labels_str = ", ".join(news_labels)
+                labels_display = labels_str
+            else:
+                labels_display = "无标签 / No labels"
+            
+            markdown.append(f"#### 新闻 {idx} / News {idx}\n\n")
+            markdown.append(f"**时间 / Time:** {news_datetime}\n\n")
+            markdown.append(f"**标签 / Labels:** {labels_display}\n\n")
+            markdown.append(f"**标题 / Title:** {title_display}\n\n")
+            
+            if news_url:
+                markdown.append(f"**链接 / URL:** [{news_url}]({news_url})\n\n")
+            
+            markdown.append(f"**入选理由 / Relevance Reason:** {relevance_reason.replace('|', '\\|')}\n\n")
+            
+            markdown.append("---\n\n")
+    else:
+        markdown.append(f"\n### 相关新闻 / RELEVANT NEWS: [{ticker}]\n\n")
+        markdown.append("*未找到相关新闻 / No relevant news found*\n\n")
     
     # 投资组合摘要（仅当前股票）
     markdown.append(f"\n## 投资组合摘要 / PORTFOLIO SUMMARY\n")

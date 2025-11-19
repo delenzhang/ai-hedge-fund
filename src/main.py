@@ -90,6 +90,7 @@ def run_hedge_fund(
             "analyst_signals": final_state["data"]["analyst_signals"],
             "llm_analysis_content": final_state["data"].get("llm_analysis_content", {}),
             "fed_rate_cut_expectation": final_state["data"].get("fed_rate_cut_expectation"),
+            "filtered_news_by_ticker": final_state["data"].get("filtered_news_by_ticker", {}),
         }
     finally:
         # Stop progress tracking
