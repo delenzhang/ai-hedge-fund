@@ -15,7 +15,7 @@ from src.graph.state import AgentState
 from src.utils.llm import call_llm
 from src.utils.progress import progress
 from src.agents.contexts.news_manager import get_news_filter_prompt_messages
-from src.news.financialjuice import fetch_latest_news, load_cached_news
+from src.news.index import fetch_latest_news, load_cached_news
 
 
 # 定义新闻项数据模型
