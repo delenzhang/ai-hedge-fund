@@ -89,6 +89,7 @@ def filter_news_for_tickers(
     agent_id: str,
     state: AgentState,
     days: int = 180,
+    use_progress: bool = True,
 ) -> dict[str, list[dict]]:
     """
     使用大模型为每个股票筛选相关新闻
@@ -99,6 +100,7 @@ def filter_news_for_tickers(
         agent_id: 代理 ID，用于进度跟踪和模型配置
         state: AgentState 对象，包含模型配置等信息
         days: 要筛选的新闻天数，默认180天（约半年）
+        use_progress: 是否使用进度跟踪，默认 True
     
     返回:
         按股票分组的筛选后新闻字典，格式: {"PYPL": [相关新闻列表], "BABA": [相关新闻列表], ...}
@@ -120,7 +122,8 @@ def filter_news_for_tickers(
     filtered_news_by_ticker = {}
     
     for ticker in tickers:
-        progress.update_status(agent_id, ticker, f"筛选 {ticker} 相关新闻")
+        if use_progress:
+            progress.update_status(agent_id, ticker, f"筛选 {ticker} 相关新闻")
         
         # 构建 prompt 数据
         prompt_data = {

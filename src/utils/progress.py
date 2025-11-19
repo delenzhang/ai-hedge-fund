@@ -99,15 +99,17 @@ class AgentProgress:
         if "risk_management" in agent_name:
             return "风险管理 / Risk Management"
         
+        # Handle short_term_news_agent (不在 ANALYST_CONFIG 中，需要特殊处理)
+        if "short_term_news" in agent_name:
+            return "短线新闻分析 / Short Term News Analysis"
+        
         # Get ANALYST_CONFIG (lazy loaded)
         ANALYST_CONFIG = _get_analyst_config()
         
         # If ANALYST_CONFIG is empty (import failed), fallback early
         if not ANALYST_CONFIG:
             base_key = agent_name.replace("_agent", "").replace("_analyst", "")
-            # Debug output (temporary)
-            import sys
-            print(f"DEBUG: ANALYST_CONFIG is empty, agent_name={agent_name}, base_key={base_key}", file=sys.stderr)
+            # 不再输出 DEBUG 信息，静默处理
             return base_key.replace("_", " ").title()
         
         # Try exact match first (agent_name might already be a key)
@@ -119,9 +121,7 @@ class AgentProgress:
             base_key = agent_name[:-6]  # Remove "_agent" suffix
             if base_key in ANALYST_CONFIG:
                 return ANALYST_CONFIG[base_key]["display_name"]
-            # Debug output (temporary)
-            import sys
-            print(f"DEBUG: No match for agent_name={agent_name}, base_key={base_key}, available_keys={list(ANALYST_CONFIG.keys())[:5]}", file=sys.stderr)
+            # 不再输出 DEBUG 信息，因为某些 agent（如 short_term_news_agent）不在 ANALYST_CONFIG 中是正常的
         
         # Try matching by removing _analyst suffix
         if agent_name.endswith("_analyst"):

@@ -89,7 +89,19 @@ def call_llm(
             
             if agent_name:
                 error_msg = f"Rate limit error - retry {attempt + 1}/{max_retries}" if is_rate_limit else f"Error - retry {attempt + 1}/{max_retries}"
-                progress.update_status(agent_name, None, error_msg)
+                # 只对在 ANALYST_CONFIG 中的 agent 或特殊 agent 更新 progress，避免不必要的 DEBUG 输出
+                try:
+                    from src.utils.analysts import ANALYST_CONFIG
+                    base_key = agent_name.replace("_agent", "").replace("_analyst", "")
+                    # 如果是已知的 agent 或者是特殊 agent（portfolio_manager/risk_management/short_term_news），才更新 progress
+                    if (base_key in ANALYST_CONFIG or 
+                        "portfolio_manager" in agent_name or 
+                        "risk_management" in agent_name or
+                        "short_term_news" in agent_name):
+                        progress.update_status(agent_name, None, error_msg)
+                except Exception:
+                    # 如果导入失败，仍然更新 progress（保持向后兼容）
+                    progress.update_status(agent_name, None, error_msg)
 
             # If this is the last attempt, don't wait
             if attempt == max_retries - 1:

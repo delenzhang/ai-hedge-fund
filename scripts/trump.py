@@ -19,9 +19,17 @@ import subprocess
 import json
 import time
 import re
-import os
+from lib.deepseek import get_deepseek_response
 
 from datetime import datetime, timedelta
+import sys
+from pathlib import Path
+
+# 添加项目根目录到路径
+project_root = Path(__file__).parent.parent
+sys.path.insert(0, str(project_root))
+
+from src.wexin import send_wechat_message
 
 def convert_to_beijing_time(utc_time_str):
     # 将 UTC 时间字符串解析为 datetime 对象
@@ -40,28 +48,10 @@ def convert_to_beijing_time(utc_time_str):
     return beijing_time.strftime("%Y-%m-%d %H:%M")
 
 def fetch_trump_statuses_with_curl():
-    """
-    获取特朗普的 Truth Social 状态列表
-    
-    代理设置：
-    - 支持通过环境变量 SOCKS5_PROXY 配置代理（格式: 127.0.0.1:1080）
-    - 如果未设置环境变量，默认使用 127.0.0.1:1080
-    - 如果环境变量设置为空字符串，则不使用代理
-    """
-    # 获取代理设置
-    proxy = os.environ.get("SOCKS5_PROXY", "127.0.0.1:1080")
-    
-    curl_command = ["curl", "-s"]
-    
-    # 如果设置了代理，添加代理参数
-    if proxy:
-        curl_command.extend([
-            "--socks5-hostname",
-            proxy
-        ])
-    
-    # 添加 URL 和请求头
-    curl_command.extend([
+    """获取特朗普的 Truth Social 状态列表"""
+    curl_command = [
+        "curl",
+        "-s",
         "https://truthsocial.com/api/v1/accounts/107780257626128497/statuses", #?with_muted=true&only_media=true
         "-H", "accept: application/json, text/plain, */*",
         "-H", "accept-language: zh-CN,zh;q=0.9,en;q=0.8,en-US;q=0.7",
@@ -78,27 +68,17 @@ def fetch_trump_statuses_with_curl():
         "-H", "sec-fetch-site: same-origin",
         "-H", "sentry-trace: b25538cf86ea4d1c9d35a000661d23fd-9fd1d76e6ef0b69b",
         "-H", "user-agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/135.0.0.0 Safari/537.36"
-    ])
-    
-    try:
-        result = subprocess.run(curl_command, capture_output=True, text=True, timeout=30)
-        
-        if result.returncode == 0:
-            try:
-                return json.loads(result.stdout)
-            except json.JSONDecodeError as e:
-                print(f"警告: 无法解析 Trump 状态响应: {e}")
-                return None
-        else:
-            print(f"警告: 获取 Trump 状态失败 (返回码: {result.returncode})")
-            if result.stderr:
-                print(f"错误信息: {result.stderr}")
+    ]
+    result = subprocess.run(curl_command, capture_output=True, text=True)
+   
+    if result.returncode == 0:
+        try:
+            return json.loads(result.stdout)
+        except json.JSONDecodeError:
+            print(f"警告: 无法解析 Trump 状态响应")
             return None
-    except subprocess.TimeoutExpired:
-        print("警告: 获取 Trump 状态超时（30秒）")
-        return None
-    except Exception as e:
-        print(f"警告: 获取 Trump 状态时发生异常: {e}")
+    else:
+        print(f"警告: 获取 Trump 状态失败: {result.stderr}")
         return None
 
 
@@ -167,3 +147,42 @@ def fetch_trump_news(limit: int = 50) -> list[dict]:
     items = sorted(items, key=lambda x: x["datetime"], reverse=True)
     
     return items
+
+# send_wechat_message 函数已从 src.wexin 模块导入
+
+
+lastContentTime = ""
+def main():
+    global lastContentTime  # 声明为全局变量
+    while True:
+        try:
+         
+          statuses = fetch_trump_statuses_with_curl()
+          if statuses:
+              firstContent = statuses[0].get("content", "空")
+              targetContent = get_deepseek_response(firstContent)
+              media_attachments = statuses[0].get("media_attachments", [])
+              urls = [attachment.get("preview_url", '') for attachment in media_attachments]
+              createTime = convert_to_beijing_time(statuses[0].get('created_at', ''))
+              wecomConten = f"<@delenzhang> 川普在{createTime}发了一条状态:\n {firstContent} \n 翻译: \n {targetContent} \n 媒体地址: {', '.join(urls)}"
+              print(f"wecomConten: {wecomConten}, createTime: {createTime}")
+              if lastContentTime != createTime:
+                  lastContentTime = createTime
+                  send_wechat_message(wecomConten)
+              else:
+                  current_time = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                  print(f"当前时间: {current_time} trump 没有新的状态更新")
+          time.sleep(5)
+        except KeyboardInterrupt:
+            print("\n定时任务已停止")
+            break
+        except Exception as e:
+            print(f"任务执行异常: {str(e)}")
+            time.sleep(5)  # 异常后仍保持间隔
+            
+
+if __name__ == "__main__":
+    main()
+# 这个代码是一个简单的Python脚本，用于从Truth Social网站获取特朗普的状态更新。
+# 它使用requests库发送HTTP GET请求，并处理响应。
+# 你可以根据需要修改URL和参数，以获取不同的信息。

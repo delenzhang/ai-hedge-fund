@@ -36,6 +36,24 @@ initial_positions = {
             "short": 0,
             "short_cost_basis": 0.0,
         },
+        "EL": {
+           "long": 55,
+            "long_cost_basis": 70,
+            "short": 0,
+            "short_cost_basis": 0.0, 
+        },
+        "INTC": {
+           "long": 500,
+           "long_cost_basis": 35,
+            "short": 0,
+            "short_cost_basis": 0.0, 
+        },
+        "ORCL": {
+            "long": 12,
+            "long_cost_basis": 240,
+            "short": 0,
+            "short_cost_basis": 0.0, 
+        }
     }
     
     # 可选：为每个股票设置不同的初始已实现收益
@@ -60,6 +78,18 @@ initial_realized_gains = {
         },
         "MP": {
             "long": -764,
+            "short": 0.0,
+        },
+         "EL": {
+           "long": -5591,
+            "short": 0.0,
+        },
+        "INTC": {
+          "long": -555,
+            "short": 0.0,
+        },
+        "ORCL": {
+           "long": -220,
             "short": 0.0,
         }
     }
