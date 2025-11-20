@@ -36,8 +36,8 @@ class ShortTermDecision(BaseModel):
     reasoning: str = Field(description="Reasoning for the decision")
     # 建议的交易价格（可选）
     suggested_price: float | None = Field(default=None, description="Suggested buy/sell price per share (optional)")
-    # 建议的短线交易时间窗口
-    time_window: str = Field(default="1-3个交易日", description="Suggested short-term trading time window")
+    # 建议的短线交易时间窗口（默认5天左右）
+    time_window: str = Field(default="5个交易日左右", description="Suggested short-term trading time window (around 5 trading days)")
     # 评分信息
     score: dict[str, int] = Field(default_factory=dict, description="Score breakdown")
 
@@ -312,7 +312,7 @@ def generate_short_term_decision(
                 confidence=0,
                 reasoning="默认决策：持有",
                 suggested_price=None,
-                time_window="1-3个交易日",
+                time_window="5个交易日左右",
                 score={},
             )
         return ShortTermNewsAgentOutput(

@@ -1,16 +1,17 @@
 [
   {
+    "display_name": "deepseek-v3",
+    "model_name": "deepseek-v3",
+    "provider": "OpenAI"
+  },
+  {
     "display_name": "qwen3-max",
     "model_name": "qwen3-max",
     "provider": "OpenAI",
     "API_KEY_ENV": "QWEN3_MAX_KEY",
     "BASE_URL": "QWEN3_MAX_BASE"
   },
-  {
-    "display_name": "deepseek-v3",
-    "model_name": "deepseek-v3",
-    "provider": "OpenAI"
-  },
+  
   {
     "display_name": "deepseek-r1",
     "model_name": "deepseek-r1",

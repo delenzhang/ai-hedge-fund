@@ -37,8 +37,8 @@ initial_positions = {
             "short_cost_basis": 0.0,
         },
         "EL": {
-           "long": 55,
-            "long_cost_basis": 70,
+           "long": 14,
+            "long_cost_basis": 488,
             "short": 0,
             "short_cost_basis": 0.0, 
         },
@@ -80,7 +80,7 @@ initial_realized_gains = {
             "long": -764,
             "short": 0.0,
         },
-         "EL": {
+        "EL": {
            "long": -5591,
             "short": 0.0,
         },
