@@ -223,9 +223,33 @@ def detect_significant_changes(
     if changes:
         return "\n".join(changes), decisions_same
     
-    # 如果没有其他变化，但决策相同且有决策数据，也应该发送提醒（告知决策相同）
-    if decisions_same and current_decisions:
-        return "操作建议与上次相同", True
+    # 检查操作是否完全相同（即使股票集合不同，只要共同股票的操作相同，也算相同）
+    operations_same = True
+    if current_decisions and last_decisions:
+        common_tickers = current_tickers & last_tickers
+        if common_tickers:
+            # 检查共同股票的操作是否相同
+            for ticker in common_tickers:
+                current_action = current_decisions.get(ticker, {}).get("action", "hold")
+                last_action = last_decisions.get(ticker, {}).get("action", "hold")
+                if current_action != last_action:
+                    operations_same = False
+                    break
+        # 如果没有共同股票，但decisions_same为True（说明在遍历时没有检测到操作变化），视为相同
+        # 这种情况可能是因为股票集合完全不同的原因，但操作逻辑相同
+    elif not current_decisions and not last_decisions:
+        # 两者都没有决策，视为相同
+        operations_same = True
+    else:
+        # 一个有决策一个没有，视为不同
+        operations_same = False
+    
+    # 如果没有其他变化（changes为空），且有决策数据，应该发送提醒
+    # 这样可以确保即使决策保持不变，用户也能收到通知
+    if current_decisions:
+        # 如果操作相同（基于共同股票比较），或者decisions_same为True（没有检测到操作变化）
+        if operations_same or decisions_same:
+            return "操作建议与上次相同", True
     
     # 完全没有变化且没有决策数据，不发送提醒
     return "", decisions_same

@@ -35,8 +35,29 @@ start_service() {
     echo "启动短线新闻分析 Agent 监控服务..."
     cd "$PROJECT_ROOT"
     
-    # 使用 nohup 在后台运行
-    nohup poetry run python "$SCRIPT_FILE" --interval 60 > "$LOG_FILE" 2>&1 &
+    # 第一次执行：立即运行一次分析并输出到日志
+    echo "正在执行第一次分析..."
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] =========================================" >> "$LOG_FILE"
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] 启动短线新闻分析 Agent 监控服务" >> "$LOG_FILE"
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] 执行第一次分析..." >> "$LOG_FILE"
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] =========================================" >> "$LOG_FILE"
+    
+    # 执行一次分析（不循环，只运行一次）
+    poetry run python "$SCRIPT_FILE" --interval 0 >> "$LOG_FILE" 2>&1
+    FIRST_RUN_EXIT_CODE=$?
+    
+    if [ $FIRST_RUN_EXIT_CODE -eq 0 ]; then
+        echo "[$(date '+%Y-%m-%d %H:%M:%S')] 第一次分析完成" >> "$LOG_FILE"
+        echo "第一次分析完成"
+    else
+        echo "[$(date '+%Y-%m-%d %H:%M:%S')] 警告: 第一次分析失败，退出码: $FIRST_RUN_EXIT_CODE" >> "$LOG_FILE"
+        echo "警告: 第一次分析失败，但将继续启动定时服务"
+    fi
+    
+    echo "[$(date '+%Y-%m-%d %H:%M:%S')] 启动定时监控服务（每60分钟执行一次）..." >> "$LOG_FILE"
+    
+    # 使用 nohup 在后台运行定时服务
+    nohup poetry run python "$SCRIPT_FILE" --interval 60 >> "$LOG_FILE" 2>&1 &
     PID=$!
     
     # 等待一下确保进程启动

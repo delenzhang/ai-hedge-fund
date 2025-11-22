@@ -180,7 +180,6 @@ def get_prices(ticker: str, start_date: str, end_date: str, period: Period = Per
     """
     # Get current timestamp
     current_timestamp = time.time()
-    print(current_timestamp)
     
     # Convert period to minutes for cache refresh logic
     period_minutes = _period_to_minutes(period)

@@ -27,6 +27,8 @@ from src.tools.alert_utils import (
     detect_significant_changes,
     format_risk_alert_message,
     format_wechat_message,
+    format_action_description,
+    format_news_summary,
     get_default_model_config,
 )
 import json
@@ -98,22 +100,123 @@ def run_analysis():
             filtered_news_by_ticker = result_state["data"].get("filtered_news_by_ticker", {})
             result_dict["filtered_news_by_ticker"] = filtered_news_by_ticker
             
-            # 过滤决策：只保留信心度超过80%的决策
+            # 过滤决策：只保留信心度超过75%的决策
             filtered_decisions = {}
+            skipped_decisions = []  # 保存被跳过的决策信息
             skipped_count = 0
             for ticker, decision in result_dict.get("decisions", {}).items():
                 confidence = decision.get("confidence", 0)
-                if confidence >= 80:
+                if confidence > 70:
                     filtered_decisions[ticker] = decision
                 else:
                     skipped_count += 1
-                    print(f"跳过 {ticker}：信心度 {confidence}% < 80%")
+                    # 保存被跳过决策的详细信息
+                    action = decision.get("action", "unknown")
+                    quantity = decision.get("quantity", 0)
+                    reasoning = decision.get("reasoning", "")
+                    suggested_price = decision.get("suggested_price")
+                    time_window = decision.get("time_window", "")
+                    skipped_decisions.append({
+                        "ticker": ticker,
+                        "confidence": confidence,
+                        "action": action,
+                        "quantity": quantity,
+                        "reasoning": reasoning,
+                        "suggested_price": suggested_price,
+                        "time_window": time_window
+                    })
+                    # 显示被跳过决策的详细信息
+                    print(f"\n跳过 {ticker}：信心度 {confidence}% <= 75%")
+                    print(f"  操作: {action}")
+                    print(f"  数量: {quantity}")
+                    if suggested_price:
+                        print(f"  建议价格: {suggested_price}")
+                    if time_window:
+                        print(f"  时间窗口: {time_window}")
+                    if reasoning:
+                        # 如果推理内容较长，只显示前200个字符
+                        reasoning_short = reasoning[:200] + "..." if len(reasoning) > 200 else reasoning
+                        print(f"  推理: {reasoning_short}")
+                    # 显示相关新闻信息
+                    ticker_news = filtered_news_by_ticker.get(ticker, [])
+                    if ticker_news:
+                        news_summary = format_news_summary(ticker_news, max_items=3)  # 最多显示3条新闻
+                        if news_summary:
+                            print(f"  相关新闻:")
+                            for news_line in news_summary.split("\n"):
+                                print(f"  {news_line}")
             
             if skipped_count > 0:
-                print(f"共跳过 {skipped_count} 个低信心度决策（信心度 < 80%）")
+                print(f"\n共跳过 {skipped_count} 个低信心度决策（信心度 <= 75%）")
             
+            # 即使没有高信心度决策，也要发送企业微信信息
             if not filtered_decisions:
-                print("警告: 没有信心度超过80%的决策，不保存结果")
+                print("警告: 没有信心度超过75%的决策")
+                if skipped_count > 0:
+                    # 发送跳过决策的企业微信信息
+                    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                    
+                    # 先说结论
+                    conclusion = f"⚠️ 所有决策信心度不足，已跳过（共 {skipped_count} 个决策）"
+                    
+                    # 再说原因：列出被跳过的决策详情
+                    skipped_details = []
+                    # 获取新闻数据
+                    filtered_news_by_ticker = result_dict.get("filtered_news_by_ticker", {})
+                    
+                    for skipped in skipped_decisions:
+                        ticker = skipped["ticker"]
+                        confidence = skipped["confidence"]
+                        action = skipped["action"]
+                        quantity = skipped["quantity"]
+                        reasoning = skipped.get("reasoning", "")
+                        suggested_price = skipped.get("suggested_price")
+                        time_window = skipped.get("time_window", "")
+                        
+                        action_emoji = {
+                            "buy": "📈",
+                            "sell": "📉",
+                            "short": "🔻",
+                            "cover": "🔺",
+                            "hold": "⏸️"
+                        }.get(action, "⏸️")
+                        
+                        action_desc = format_action_description(action, quantity)
+                        detail_line = f"{action_emoji} {ticker}: {action_desc} | 信心度 {confidence}%"
+                        
+                        if suggested_price:
+                            detail_line += f" | 建议价格 ${suggested_price:.2f}"
+                        if time_window:
+                            detail_line += f" | 时间窗口 {time_window}"
+                        if reasoning:
+                            reasoning_display = reasoning[:150] + "..." if len(reasoning) > 150 else reasoning
+                            detail_line += f"\n   💭 原因: {reasoning_display}"
+                        
+                        # 添加相关新闻信息
+                        ticker_news = filtered_news_by_ticker.get(ticker, [])
+                        if ticker_news:
+                            news_summary = format_news_summary(ticker_news, max_items=3)  # 最多显示3条新闻
+                            if news_summary:
+                                detail_line += f"\n   📰 相关新闻:\n{news_summary}"
+                        
+                        skipped_details.append(detail_line)
+                    
+                    reason = "\n".join(skipped_details)
+                    
+                    wechat_message = f"""<@delenzhang> 短线新闻分析提醒
+
+⏰ 时间: {timestamp}
+
+{conclusion}
+
+📋 被跳过的决策详情:
+{reason}
+
+💡 说明: 所有决策的信心度均未超过75%，为保证交易质量，已全部跳过。建议继续观察市场变化，等待更高信心度的交易信号。
+"""
+                    send_wechat_message(wechat_message)
+                    print("已发送跳过决策的企业微信提醒")
+                # 不保存结果，因为没有高信心度决策
                 return
             
             # 更新结果字典，只包含高信心度的决策

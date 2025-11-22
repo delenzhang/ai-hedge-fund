@@ -74,15 +74,14 @@ def fetch_latest_news() -> List[dict]:
         print(f"警告: 从 Trump 获取新闻失败: {e}")
     
     # 去重
-        news_dict = {}
-        for item in all_new_news:
-            key = get_news_key(item)
-            news_dict[key] = item
+    news_dict = {}
+    for item in all_new_news:
+        key = get_news_key(item)
+        news_dict[key] = item
     
     # 转换回列表并按日期倒序排序
-        merged_news = list(news_dict.values())
-        merged_news = sorted(merged_news, key=lambda x: x.get("datetime", ""), reverse=True)
+    merged_news = list(news_dict.values())
+    merged_news = sorted(merged_news, key=lambda x: x.get("datetime", ""), reverse=True)
     
     print(f"总共获取到 {len(merged_news)} 条新闻（已去重）")
     return merged_news
-
