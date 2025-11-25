@@ -7,7 +7,7 @@
 """
 from typing import List
 
-from src.news.financialjuice import fetch_latest_news as fetch_financialjuice_news
+from src.news.financialjuice import fetch_financialjuice_news
 from src.news.trump import fetch_trump_news
 
 

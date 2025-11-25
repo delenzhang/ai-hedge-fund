@@ -147,7 +147,7 @@ def merge_news(new_news: list, cached_news: list) -> list:
     return merged_list
 
 
-def fetch_latest_news(use_cache: bool = True):
+def fetch_financialjuice_news(use_cache: bool = True):
     """
     从 FinancialJuice API 获取最新新闻 (倒序)
     返回结构：
