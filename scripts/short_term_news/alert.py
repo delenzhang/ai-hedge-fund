@@ -30,6 +30,8 @@ from src.tools.alert_utils import (
     format_action_description,
     format_news_summary,
     get_default_model_config,
+    save_operations_history,
+    load_operations_history,
 )
 import json
 
@@ -40,6 +42,7 @@ load_dotenv()
 CACHE_DIR = project_root / ".cache" / "short_term_news"
 CACHE_DIR.mkdir(parents=True, exist_ok=True)
 CACHE_FILE = CACHE_DIR / "alert.json"
+HISTORY_FILE = CACHE_DIR / "operations_history.json"
 
 # 获取默认模型配置
 DEFAULT_MODEL_NAME, DEFAULT_MODEL_PROVIDER = get_default_model_config(project_root)
@@ -222,6 +225,9 @@ def run_analysis():
             # 更新结果字典，只包含高信心度的决策
             result_dict["decisions"] = filtered_decisions
             
+            # 保存当前操作到历史记录（只保存高信心度的决策）
+            save_operations_history(filtered_decisions, HISTORY_FILE)
+            
             # 加载上一次结果
             last_result = load_cached_result(CACHE_FILE)
             
@@ -271,12 +277,12 @@ def run_analysis():
         traceback.print_exc()
 
 
-def run_scheduled(interval_minutes: int = 60):
+def run_scheduled(interval_minutes: int = 120):
     """
     定时运行分析，每指定分钟执行一次
     
     参数:
-        interval_minutes: 执行间隔（分钟），默认60分钟（1小时）
+        interval_minutes: 执行间隔（分钟），默认120分钟（2小时）
     """
     print(f"开始定时监控，每 {interval_minutes} 分钟执行一次")
     print("按 Ctrl+C 停止")
@@ -307,8 +313,8 @@ def main():
     parser.add_argument(
         "--interval",
         type=int,
-        default=60,
-        help="循环运行间隔（分钟），0表示只运行一次，默认60分钟（1小时）"
+        default=120,
+        help="循环运行间隔（分钟），0表示只运行一次，默认120分钟（2小时）"
     )
     args = parser.parse_args()
     

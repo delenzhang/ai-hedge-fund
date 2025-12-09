@@ -5,7 +5,7 @@
 """
 import json
 from pathlib import Path
-from datetime import datetime
+from datetime import datetime, timedelta
 from typing import Optional
 
 
@@ -269,10 +269,34 @@ def format_news_summary(news_list: list[dict], max_items: int = None) -> str:
     if not news_list:
         return ""
     
-    news_items = []
-    # 如果 max_items 为 None，显示所有新闻
-    display_news = news_list if max_items is None else news_list[:max_items]
+    # 过滤出近一周的新闻
+    cutoff_date = datetime.now() - timedelta(days=7)
+    recent_news = []
     
+    for news in news_list:
+        try:
+            # 解析新闻日期时间
+            news_datetime_str = news.get("datetime", "")
+            if not news_datetime_str:
+                continue
+            
+            # 解析日期时间字符串，格式: "2025-11-19 15:38"
+            news_datetime = datetime.strptime(news_datetime_str, "%Y-%m-%d %H:%M")
+            
+            # 只保留近一周的新闻
+            if news_datetime >= cutoff_date:
+                recent_news.append(news)
+        except (ValueError, TypeError):
+            # 如果时间格式不正确，跳过这条新闻
+            continue
+    
+    if not recent_news:
+        return ""
+    
+    # 如果 max_items 为 None，显示所有近一周的新闻
+    display_news = recent_news if max_items is None else recent_news[:max_items]
+    
+    news_items = []
     for news in display_news:
         title_cn = news.get("title_cn", "")
         title = news.get("title", "")
@@ -281,7 +305,40 @@ def format_news_summary(news_list: list[dict], max_items: int = None) -> str:
         # 限制标题长度，避免消息过长
         if len(display_title) > 80:
             display_title = display_title[:80] + "..."
-        news_items.append(f"  • {display_title}")
+        
+        # 获取时间和来源
+        news_datetime_str = news.get("datetime", "")
+        source = news.get("source", "")
+        url = news.get("url", "")
+        
+        # 格式化时间显示（只显示日期和时间，不显示秒）
+        time_display = ""
+        if news_datetime_str:
+            try:
+                news_dt = datetime.strptime(news_datetime_str, "%Y-%m-%d %H:%M")
+                time_display = news_dt.strftime("%m-%d %H:%M")
+            except (ValueError, TypeError):
+                time_display = news_datetime_str
+        
+        # 格式化来源显示
+        source_display = ""
+        if source:
+            source_display = f" | 来源: {source}"
+        elif url:
+            # 如果没有 source 字段，尝试从 URL 提取来源
+            if "financialjuice" in url.lower():
+                source_display = " | 来源: financialjuice"
+            elif "truthsocial" in url.lower():
+                source_display = " | 来源: truthsocial"
+        
+        # 构建新闻项
+        news_item = f"  • {display_title}"
+        if time_display:
+            news_item += f" ({time_display})"
+        if source_display:
+            news_item += source_display
+        
+        news_items.append(news_item)
     
     return "\n".join(news_items)
 
@@ -545,7 +602,7 @@ def format_wechat_message(current_result: dict, changes: str, decisions_same: bo
         # 添加原因（如果有）
         if reasoning:
             # 限制原因长度，避免消息过长
-            reasoning_display = reasoning[:200] + "..." if len(reasoning) > 200 else reasoning
+            reasoning_display = reasoning
             summary_line += f"\n💭 原因：{reasoning_display}"
         
         # 添加信心度说明
@@ -600,4 +657,115 @@ def get_default_model_config(project_root: Path) -> tuple[str, str]:
     
     # 回退到默认配置
     return "deepseek-v3", "OPENAI"
+
+
+def load_operations_history(history_file: Path) -> dict:
+    """
+    加载历史操作记录
+    
+    参数:
+        history_file: 历史操作记录文件路径
+    
+    返回:
+        历史操作记录字典，格式: {"TICKER": [{"timestamp": "...", "action": "...", ...}, ...], ...}
+    """
+    if not history_file.exists():
+        return {}
+    
+    try:
+        with open(history_file, 'r', encoding='utf-8') as f:
+            return json.load(f)
+    except Exception as e:
+        print(f"加载历史操作记录失败: {e}")
+        return {}
+
+
+def save_operations_history(operations: dict, history_file: Path):
+    """
+    保存操作记录到历史文件
+    
+    参数:
+        operations: 当前操作记录字典，格式: {"TICKER": {"action": "...", "quantity": ..., ...}, ...}
+        history_file: 历史操作记录文件路径
+    """
+    try:
+        # 确保目录存在
+        history_file.parent.mkdir(parents=True, exist_ok=True)
+        
+        # 加载现有历史记录
+        history = load_operations_history(history_file)
+        
+        # 获取当前时间戳
+        timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+        
+        # 为每个股票添加当前操作到历史记录
+        for ticker, decision in operations.items():
+            if ticker not in history:
+                history[ticker] = []
+            
+            # 创建操作记录
+            operation_record = {
+                "timestamp": timestamp,
+                "action": decision.get("action", "hold"),
+                "quantity": decision.get("quantity", 0),
+                "confidence": decision.get("confidence", 0),
+                "reasoning": decision.get("reasoning", ""),
+                "suggested_price": decision.get("suggested_price"),
+                "time_window": decision.get("time_window", ""),
+            }
+            
+            # 添加到历史记录
+            history[ticker].append(operation_record)
+        
+        # 保存历史记录
+        with open(history_file, 'w', encoding='utf-8') as f:
+            json.dump(history, f, ensure_ascii=False, indent=2)
+    except Exception as e:
+        print(f"保存历史操作记录失败: {e}")
+
+
+def load_recent_operations_history(days: int = 5, history_file: Path | None = None) -> dict:
+    """
+    加载近N天的历史操作记录
+    
+    参数:
+        days: 要加载的天数，默认5天
+        history_file: 历史操作记录文件路径，如果为None则使用默认路径
+    
+    返回:
+        近N天的历史操作记录字典，格式: {"TICKER": [{"timestamp": "...", "action": "...", ...}, ...], ...}
+    """
+    # 如果没有指定文件路径，使用默认路径
+    if history_file is None:
+        from pathlib import Path
+        project_root = Path(__file__).parent.parent.parent
+        cache_dir = project_root / ".cache" / "short_term_news"
+        history_file = cache_dir / "operations_history.json"
+    
+    # 加载所有历史记录
+    all_history = load_operations_history(history_file)
+    
+    if not all_history:
+        return {}
+    
+    # 计算截止日期
+    cutoff_date = datetime.now() - timedelta(days=days)
+    
+    # 过滤出近N天的记录
+    recent_history = {}
+    for ticker, operations in all_history.items():
+        recent_ops = []
+        for op in operations:
+            try:
+                op_timestamp = datetime.strptime(op.get("timestamp", ""), "%Y-%m-%d %H:%M:%S")
+                if op_timestamp >= cutoff_date:
+                    recent_ops.append(op)
+            except (ValueError, TypeError):
+                # 如果时间戳格式不正确，跳过这条记录
+                continue
+        
+        if recent_ops:
+            recent_history[ticker] = recent_ops
+    
+    return recent_history
 

@@ -130,6 +130,44 @@ def deduplicate_news_list(news_list: List[dict]) -> List[dict]:
     return deduplicated_list
 
 
+def filter_news_by_days(news_list: List[dict], days: int) -> List[dict]:
+    """
+    过滤出近N天的新闻（不修改缓存，只用于返回）
+    
+    参数:
+        news_list: 新闻列表
+        days: 要保留的天数
+    
+    返回:
+        近N天的新闻列表
+    """
+    if not news_list:
+        return []
+    
+    # 计算截止日期
+    cutoff_date = datetime.now() - timedelta(days=days)
+    
+    filtered_news = []
+    for news_item in news_list:
+        try:
+            # 解析新闻日期时间
+            news_datetime_str = news_item.get("datetime", "")
+            if not news_datetime_str:
+                continue
+            
+            # 解析日期时间字符串，格式: "2025-11-19 15:38"
+            news_datetime = datetime.strptime(news_datetime_str, "%Y-%m-%d %H:%M")
+            
+            # 如果新闻日期在截止日期之后，则包含
+            if news_datetime >= cutoff_date:
+                filtered_news.append(news_item)
+        except Exception as e:
+            # 如果解析失败，跳过该新闻
+            continue
+    
+    return filtered_news
+
+
 def merge_and_deduplicate_filtered_news(
     new_filtered_news: List[dict],
     cached_filtered_news: List[dict]
@@ -277,7 +315,13 @@ def filter_news_for_tickers(
     all_news = fetch_latest_news()
     if not all_news:
         print("警告: 没有获取到新闻数据，返回空结果")
-        return {ticker: load_filtered_news_for_ticker(ticker) for ticker in tickers}
+        # 从缓存中加载并过滤出近N天的新闻
+        result = {}
+        for ticker in tickers:
+            cached_news = load_filtered_news_for_ticker(ticker)
+            recent_news = filter_news_by_days(cached_news, days=days)
+            result[ticker] = recent_news
+        return result
     
     print(f"获取到 {len(all_news)} 条新闻，开始为 {len(tickers)} 个股票筛选...")
     
@@ -298,8 +342,10 @@ def filter_news_for_tickers(
         
         if not new_news:
             print(f"{ticker}: 没有新新闻需要筛选")
-            # 返回历史筛选结果
-            filtered_news_by_ticker[ticker] = cached_filtered_news
+            # 从历史筛选结果中过滤出近N天的新闻用于返回（不修改缓存）
+            recent_cached_news = filter_news_by_days(cached_filtered_news, days=days)
+            filtered_news_by_ticker[ticker] = recent_cached_news
+            print(f"{ticker}: 缓存中保留 {len(cached_filtered_news)} 条，返回近{days}天 {len(recent_cached_news)} 条")
             continue
         
         # 3. 对新新闻进行大模型筛选
@@ -372,13 +418,16 @@ def filter_news_for_tickers(
             new_filtered_news, cached_filtered_news
         )
         
-        # 5. 保存合并后的结果到缓存文件（只保存在 filtered/{TICKER}.json）
+        # 5. 保存合并后的结果到缓存文件（保留所有历史新闻，不清理缓存）
         save_filtered_news_for_ticker(ticker, merged_filtered_news)
         
-        # 6. 返回合并后的结果
-        filtered_news_by_ticker[ticker] = merged_filtered_news
+        # 6. 过滤出近N天的新闻用于返回（不修改缓存，只用于返回）
+        recent_filtered_news = filter_news_by_days(merged_filtered_news, days=days)
         
-        print(f"{ticker}: 最终筛选结果 {len(merged_filtered_news)} 条（历史 {len(cached_filtered_news)} 条 + 新增 {len(new_filtered_news)} 条，已去重）")
+        # 7. 返回近N天的新闻（缓存中保留所有历史新闻）
+        filtered_news_by_ticker[ticker] = recent_filtered_news
+        
+        print(f"{ticker}: 缓存中保留 {len(merged_filtered_news)} 条（历史 {len(cached_filtered_news)} 条 + 新增 {len(new_filtered_news)} 条，已去重），返回近{days}天 {len(recent_filtered_news)} 条")
     
     return filtered_news_by_ticker
 

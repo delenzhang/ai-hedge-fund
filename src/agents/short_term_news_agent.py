@@ -94,9 +94,9 @@ def short_term_news_agent(state: AgentState, agent_id: str = "short_term_news_ag
     print("联储降息预期", fed_expectation)
     state["data"]["fed_rate_cut_expectation"] = fed_expectation
     
-    # 使用新闻管理代理筛选相关新闻（会自动更新缓存并使用近半年的新闻）
+    # 使用新闻管理代理筛选相关新闻（只使用近5天的新闻）
     # 不使用 progress 跟踪，因为 short_term_news_agent 不需要进度显示
-    filtered_news_by_ticker = filter_news_for_tickers(tickers, agent_id, state, days=180, use_progress=False)
+    filtered_news_by_ticker = filter_news_for_tickers(tickers, agent_id, state, days=5, use_progress=False)
     print(f"新闻筛选完成，各股票相关新闻数量: {[(t, len(n)) for t, n in filtered_news_by_ticker.items()]}")
     state["data"]["filtered_news_by_ticker"] = filtered_news_by_ticker
     
@@ -135,15 +135,15 @@ def short_term_news_agent(state: AgentState, agent_id: str = "short_term_news_ag
     # 从状态中获取当前价格（如果存在）
     current_prices = state["data"].get("current_prices", {})
     
-    # 获取最近价格走势和量价关系分析
+    # 获取最近价格走势和量价关系分析（使用2小时K线）
     price_trend_analysis = {}
     try:
-        print("开始分析最近价格走势和量价关系...")
+        print("开始分析最近价格走势和量价关系（2小时K线）...")
         api_key = get_api_key_from_state(state, "FINANCIAL_DATASETS_API_KEY")
-        # 获取最近30天的日线数据用于分析
+        # 获取最近5天的2小时K线数据用于分析
         from datetime import datetime, timedelta
         end_date = state["data"].get("end_date", datetime.now().strftime("%Y-%m-%d"))
-        start_date = (datetime.strptime(end_date, "%Y-%m-%d") - timedelta(days=30)).strftime("%Y-%m-%d")
+        start_date = (datetime.strptime(end_date, "%Y-%m-%d") - timedelta(days=5)).strftime("%Y-%m-%d")
         
         for ticker in tickers:
             try:
@@ -151,7 +151,7 @@ def short_term_news_agent(state: AgentState, agent_id: str = "short_term_news_ag
                     ticker=ticker,
                     start_date=start_date,
                     end_date=end_date,
-                    period=Period.Day,
+                    period=Period.Min_120,  # 使用2小时K线
                     api_key=api_key,
                 )
                 if prices and len(prices) >= 5:
@@ -161,10 +161,15 @@ def short_term_news_agent(state: AgentState, agent_id: str = "short_term_news_ag
             except Exception as e:
                 print(f"⚠️  {ticker} 价格走势分析失败: {e}")
                 price_trend_analysis[ticker] = {"error": str(e)}
-        print(f"价格走势分析完成，已分析 {len([k for k, v in price_trend_analysis.items() if 'error' not in v])} 只股票")
+        print(f"价格走势分析完成（2小时K线），已分析 {len([k for k, v in price_trend_analysis.items() if 'error' not in v])} 只股票")
     except Exception as e:
         print(f"⚠️ 价格走势分析失败: {e}")
         price_trend_analysis = {}
+    
+    # 加载近5天的历史操作记录作为参考
+    from src.tools.alert_utils import load_recent_operations_history
+    recent_operations = load_recent_operations_history(days=5)
+    state["data"]["recent_operations"] = recent_operations
     
     # 调用生成交易决策函数
     result = generate_short_term_decision(
@@ -176,6 +181,7 @@ def short_term_news_agent(state: AgentState, agent_id: str = "short_term_news_ag
         filtered_news_by_ticker=filtered_news_by_ticker,
         technical_analysis=technical_analysis,
         price_trend_analysis=price_trend_analysis,
+        recent_operations=recent_operations,
         agent_id=agent_id,
         state=state,
     )
@@ -443,56 +449,238 @@ def analyze_price_trend_and_volume(prices: list) -> dict:
     low_5d = float(recent_5d["low"].min())
     volatility_5d = ((high_5d - low_5d) / current_price * 100) if current_price > 0 else 0
     
-    # 分析量价关系
-    # 计算最近5天的量价关系
-    price_changes = recent_5d["close"].pct_change().dropna()
-    volume_changes = recent_5d["volume"].pct_change().dropna()
+    # ==================== 量价关系分析 ====================
+    # 量价关系是技术分析中的重要指标，用于判断市场情绪和趋势的可靠性
+    # 健康的量价关系：价涨量增（上涨有资金支持）、价跌量缩（下跌缺乏抛压）
+    # 背离的量价关系：价涨量缩（上涨乏力）、价跌量增（下跌有大量抛压）
     
-    # 对齐数据
+    # 【步骤1】计算价格和成交量的变化率
+    # 使用 pct_change() 计算相邻K线之间的百分比变化
+    # 例如：如果第1根K线收盘价是100，第2根是105，则变化率是5%
+    price_changes = recent_5d["close"].pct_change().dropna()  # 价格变化率序列，去掉NaN
+    volume_changes = recent_5d["volume"].pct_change().dropna()  # 成交量变化率序列，去掉NaN
+    
+    # 【步骤2】对齐价格变化和成交量变化的数据
+    # 由于 pct_change() 会产生NaN（第一行没有前一行可比较），需要确保两个序列长度一致
     min_len = min(len(price_changes), len(volume_changes))
     if min_len > 1:
+        # 取对齐后的数据（从尾部取，确保是最新的数据）
         price_changes_aligned = price_changes.tail(min_len)
         volume_changes_aligned = volume_changes.tail(min_len)
         
-        # 计算量价相关性
+        # 【步骤3】计算量价相关性（皮尔逊相关系数）
+        # 相关系数范围：-1 到 +1
+        #   +1：完全正相关（价涨量增、价跌量缩，健康关系）
+        #   -1：完全负相关（价涨量缩、价跌量增，背离关系）
+        #    0：无相关性（量价关系不明确）
+        # 使用 pandas 的 corr() 方法计算皮尔逊相关系数
         correlation = float(price_changes_aligned.corr(volume_changes_aligned)) if len(price_changes_aligned) > 1 else 0.0
         
-        # 统计价涨量增、价跌量缩的情况
-        price_up_volume_up = 0
-        price_down_volume_down = 0
-        price_up_volume_down = 0  # 量价背离
-        price_down_volume_up = 0  # 量价背离
+        # 【步骤4】逐K线统计量价关系的四种情况
+        # 遍历最近5天的每一根K线，与前一根K线比较，统计量价关系
+        price_up_volume_up = 0      # 价涨量增：价格上涨且成交量增加（健康上涨信号）
+        price_down_volume_down = 0  # 价跌量缩：价格下跌且成交量减少（健康下跌信号，抛压不重）
+        price_up_volume_down = 0    # 价涨量缩：价格上涨但成交量减少（背离，上涨乏力，可能见顶）
+        price_down_volume_up = 0    # 价跌量增：价格下跌但成交量增加（背离，大量抛压，可能加速下跌）
         
+        # 从第2根K线开始遍历（第1根没有前一根可比较）
         for i in range(1, len(recent_5d)):
-            price_up = recent_5d["close"].iloc[i] > recent_5d["close"].iloc[i-1]
-            volume_up = recent_5d["volume"].iloc[i] > recent_5d["volume"].iloc[i-1]
+            # 判断当前K线相比前一根K线的价格和成交量变化
+            price_up = recent_5d["close"].iloc[i] > recent_5d["close"].iloc[i-1]  # 价格是否上涨
+            volume_up = recent_5d["volume"].iloc[i] > recent_5d["volume"].iloc[i-1]  # 成交量是否增加
             
+            # 根据价格和成交量的变化组合，统计对应的量价关系类型
             if price_up and volume_up:
+                # 价涨量增：健康的上涨信号，有资金推动
                 price_up_volume_up += 1
             elif not price_up and not volume_up:
+                # 价跌量缩：健康的下跌信号，抛压不重，可能是正常回调
                 price_down_volume_down += 1
             elif price_up and not volume_up:
+                # 价涨量缩：背离信号，上涨缺乏成交量支持，可能上涨乏力或见顶
                 price_up_volume_down += 1
             elif not price_up and volume_up:
+                # 价跌量增：背离信号，下跌伴随大量抛压，可能加速下跌
                 price_down_volume_up += 1
     else:
+        # 数据不足，无法计算量价关系，使用默认值
         correlation = 0.0
         price_up_volume_up = 0
         price_down_volume_down = 0
         price_up_volume_down = 0
         price_down_volume_up = 0
     
-    # 计算平均成交量
-    avg_volume_5d = float(recent_5d["volume"].mean())
-    avg_volume_20d = float(recent_20d["volume"].mean()) if len(recent_20d) >= 5 else avg_volume_5d
+    # 【步骤5】计算成交量分析指标
+    # 通过比较短期和长期平均成交量，判断近期成交量的活跃程度
+    avg_volume_5d = float(recent_5d["volume"].mean())  # 最近5根K线的平均成交量
+    avg_volume_20d = float(recent_20d["volume"].mean()) if len(recent_20d) >= 5 else avg_volume_5d  # 最近20根K线的平均成交量
+    # 成交量比率：短期成交量 / 长期成交量
+    #   > 1.2：近期成交量放大，市场活跃度提升
+    #   < 0.8：近期成交量萎缩，市场活跃度下降
+    #   ≈ 1.0：成交量保持稳定
     volume_ratio = (avg_volume_5d / avg_volume_20d) if avg_volume_20d > 0 else 1.0
     
-    # 判断量价关系类型
+    # 【步骤5.5】放量检测与分析
+    # 放量定义：当日成交量比上一交易日放大10%以上，或连续多日成交量持续增加
+    # 放量后大概率会涨的三种情况：底部放量、突破压力位时放量、上涨初期持续放量
+    volume_surge_analysis = {}
+    
+    if len(recent_5d) >= 2:
+        # 获取最近几根K线的数据
+        latest_volume = float(recent_5d["volume"].iloc[-1])  # 最新一根K线的成交量
+        prev_volume = float(recent_5d["volume"].iloc[-2])  # 前一根K线的成交量
+        
+        # 检测单日放量：当日成交量比上一交易日放大10%以上
+        volume_surge_single_day = False
+        volume_surge_ratio = 0.0
+        if prev_volume > 0:
+            volume_surge_ratio = ((latest_volume - prev_volume) / prev_volume * 100) if prev_volume > 0 else 0.0
+            volume_surge_single_day = volume_surge_ratio >= 10.0  # 放大10%以上视为放量
+        
+        # 检测连续多日成交量持续增加
+        volume_surge_continuous = False
+        continuous_days = 0
+        if len(recent_5d) >= 3:
+            # 检查最近3根K线是否连续放量
+            volumes = recent_5d["volume"].tail(3).values
+            if len(volumes) >= 3:
+                # 检查是否连续递增
+                if volumes[2] > volumes[1] > volumes[0]:
+                    volume_surge_continuous = True
+                    continuous_days = 3
+                elif volumes[2] > volumes[1]:
+                    continuous_days = 2
+        
+        # 判断是否放量
+        is_volume_surge = volume_surge_single_day or volume_surge_continuous
+        
+        if is_volume_surge:
+            # 计算价格位置（用于判断底部放量）
+            # 获取更长期的价格数据来判断是否在底部
+            if len(df) >= 20:
+                price_20d_ago = float(df["close"].iloc[-20])
+                price_10d_ago = float(df["close"].iloc[-10]) if len(df) >= 10 else current_price
+                price_5d_ago = float(df["close"].iloc[-5]) if len(df) >= 5 else current_price
+                
+                # 判断是否在底部：最近20日、10日、5日都是下跌或震荡，且当前价格接近近期低点
+                price_decline_20d = ((current_price - price_20d_ago) / price_20d_ago * 100) if price_20d_ago > 0 else 0
+                price_decline_10d = ((current_price - price_10d_ago) / price_10d_ago * 100) if price_10d_ago > 0 else 0
+                price_decline_5d = ((current_price - price_5d_ago) / price_5d_ago * 100) if price_5d_ago > 0 else 0
+                
+                # 计算近期最低价
+                recent_low = float(recent_5d["low"].min())
+                recent_high = float(recent_5d["high"].max())
+                price_position = ((current_price - recent_low) / (recent_high - recent_low)) if (recent_high - recent_low) > 0 else 0.5
+                
+                # 判断底部放量：长期下跌后，价格在低位（价格位置<0.3），且出现放量
+                is_bottom_surge = (
+                    price_decline_20d < -5 and  # 20日跌幅超过5%
+                    price_decline_10d <= 0 and  # 10日不涨或下跌
+                    price_position < 0.3 and  # 价格在近期低位的30%范围内
+                    is_volume_surge
+                )
+                
+                # 判断突破压力位时放量：价格上涨突破近期高点，且放量
+                # 这里简化处理：如果当前价格接近或突破近期高点，且放量
+                is_breakthrough_surge = (
+                    current_price >= recent_high * 0.98 and  # 价格接近或突破近期高点（98%以上）
+                    change_5d > 0 and  # 5日上涨
+                    is_volume_surge
+                )
+                
+                # 判断上涨初期持续放量：上涨初期（5日涨幅>0但<5%），且连续多日放量
+                is_early_uptrend_surge = (
+                    0 < change_5d < 5 and  # 5日涨幅在0-5%之间（上涨初期）
+                    volume_surge_continuous and  # 连续多日放量
+                    price_up_volume_up >= 2  # 价涨量增的天数>=2
+                )
+                
+                # 综合判断放量类型和看涨概率
+                surge_type = []
+                bullish_probability = 0
+                
+                if is_bottom_surge:
+                    surge_type.append("底部放量")
+                    bullish_probability = max(bullish_probability, 70)  # 底部放量看涨概率较高
+                
+                if is_breakthrough_surge:
+                    surge_type.append("突破压力位放量")
+                    bullish_probability = max(bullish_probability, 75)  # 突破放量看涨概率很高
+                
+                if is_early_uptrend_surge:
+                    surge_type.append("上涨初期持续放量")
+                    bullish_probability = max(bullish_probability, 65)  # 上涨初期放量看涨概率较高
+                
+                # 如果检测到放量但无法归类，标记为"一般放量"
+                if not surge_type:
+                    surge_type.append("一般放量")
+                    bullish_probability = 50  # 一般放量看涨概率中等
+                
+                volume_surge_analysis = {
+                    "is_volume_surge": True,
+                    "surge_type": surge_type,
+                    "surge_ratio": round(volume_surge_ratio, 2) if volume_surge_single_day else 0.0,
+                    "continuous_days": continuous_days,
+                    "bullish_probability": bullish_probability,
+                    "price_position": round(price_position, 2) if len(df) >= 20 else None,
+                    "is_bottom_surge": is_bottom_surge,
+                    "is_breakthrough_surge": is_breakthrough_surge,
+                    "is_early_uptrend_surge": is_early_uptrend_surge,
+                }
+            else:
+                # 数据不足，无法判断放量类型
+                volume_surge_analysis = {
+                    "is_volume_surge": True,
+                    "surge_type": ["一般放量"],
+                    "surge_ratio": round(volume_surge_ratio, 2) if volume_surge_single_day else 0.0,
+                    "continuous_days": continuous_days,
+                    "bullish_probability": 50,
+                    "price_position": None,
+                    "is_bottom_surge": False,
+                    "is_breakthrough_surge": False,
+                    "is_early_uptrend_surge": False,
+                }
+        else:
+            # 未检测到放量
+            volume_surge_analysis = {
+                "is_volume_surge": False,
+                "surge_type": [],
+                "surge_ratio": 0.0,
+                "continuous_days": 0,
+                "bullish_probability": 0,
+                "price_position": None,
+                "is_bottom_surge": False,
+                "is_breakthrough_surge": False,
+                "is_early_uptrend_surge": False,
+            }
+    else:
+        # 数据不足，无法检测放量
+        volume_surge_analysis = {
+            "is_volume_surge": False,
+            "surge_type": [],
+            "surge_ratio": 0.0,
+            "continuous_days": 0,
+            "bullish_probability": 0,
+            "price_position": None,
+            "is_bottom_surge": False,
+            "is_breakthrough_surge": False,
+            "is_early_uptrend_surge": False,
+        }
+    
+    # 【步骤6】根据相关系数判断量价关系类型
+    # 这是对量价关系的综合判断，用于快速识别市场状态
     if correlation > 0.3:
+        # 相关系数 > 0.3：正相关较强，量价关系健康
+        # 说明价格上涨时成交量增加，价格下跌时成交量减少，这是健康的量价关系
         volume_price_relation = "健康 / Healthy (价涨量增、价跌量缩)"
     elif correlation < -0.3:
+        # 相关系数 < -0.3：负相关较强，量价关系背离
+        # 说明价格上涨时成交量减少，或价格下跌时成交量增加，这是背离的量价关系
+        # 背离通常意味着趋势可能反转或失去动力
         volume_price_relation = "背离 / Divergence (价涨量缩或价跌量增)"
     else:
+        # 相关系数在 -0.3 到 0.3 之间：相关性较弱
+        # 量价关系不明确，需要结合其他指标判断
         volume_price_relation = "弱相关 / Weak correlation"
     
     # 判断价格趋势
@@ -527,7 +715,78 @@ def analyze_price_trend_and_volume(prices: list) -> dict:
             "avg_volume_20d": int(avg_volume_20d),
             "volume_ratio": round(volume_ratio, 2),
         },
+        "volume_surge_analysis": volume_surge_analysis,  # 放量分析结果
     }
+
+
+# 格式化历史操作记录，便于模型理解
+def format_recent_operations_for_prompt(recent_operations: dict) -> str:
+    """
+    将近5天的历史操作记录格式化为易读的字符串
+    
+    参数:
+        recent_operations: 历史操作字典，格式: {"TICKER": [{"timestamp": "...", "action": "...", "quantity": ..., "confidence": ..., ...}, ...], ...}
+    
+    返回:
+        格式化后的历史操作字符串
+    """
+    if not recent_operations:
+        return "无历史操作记录 / No recent operations history"
+    
+    formatted_lines = []
+    formatted_lines.append("近5天的历史操作记录 / Recent Operations History (Last 5 Days):")
+    formatted_lines.append("=" * 60)
+    
+    for ticker, operations in recent_operations.items():
+        if not operations:
+            continue
+        
+        formatted_lines.append(f"\n【{ticker}】")
+        for idx, op in enumerate(operations, 1):
+            timestamp = op.get("timestamp", "")
+            action = op.get("action", "hold")
+            quantity = op.get("quantity", 0)
+            confidence = op.get("confidence", 0)
+            reasoning = op.get("reasoning", "")
+            suggested_price = op.get("suggested_price")
+            
+            action_emoji = {
+                "buy": "📈",
+                "sell": "📉",
+                "short": "🔻",
+                "cover": "🔺",
+                "hold": "⏸️"
+            }.get(action, "⏸️")
+            
+            action_desc = format_action_description_for_operations(action, quantity)
+            formatted_lines.append(f"\n  操作 {idx} / Operation {idx}:")
+            formatted_lines.append(f"    时间 / Time: {timestamp}")
+            formatted_lines.append(f"    操作 / Action: {action_emoji} {action_desc}")
+            formatted_lines.append(f"    信心度 / Confidence: {confidence}%")
+            if suggested_price:
+                formatted_lines.append(f"    建议价格 / Suggested Price: ${suggested_price:.2f}")
+            if reasoning:
+                reasoning_short = reasoning[:150] + "..." if len(reasoning) > 150 else reasoning
+                formatted_lines.append(f"    原因 / Reasoning: {reasoning_short}")
+        
+        formatted_lines.append("-" * 60)
+    
+    return "\n".join(formatted_lines) if formatted_lines else "无历史操作记录 / No recent operations history"
+
+
+# 辅助函数：格式化操作描述（用于历史操作显示）
+def format_action_description_for_operations(action: str, quantity: int) -> str:
+    """格式化操作描述，用于历史操作显示"""
+    if action == "buy" and quantity > 0:
+        return f"买入 {quantity}股"
+    elif action == "sell" and quantity > 0:
+        return f"卖出 {quantity}股"
+    elif action == "short" and quantity > 0:
+        return f"做空 {quantity}股"
+    elif action == "cover" and quantity > 0:
+        return f"平仓 {quantity}股"
+    else:
+        return "持有"
 
 
 # 格式化价格走势和量价关系分析，便于模型理解
@@ -545,7 +804,7 @@ def format_price_trend_analysis_for_prompt(price_trend_analysis: dict) -> str:
         return "无价格走势数据 / No price trend data"
     
     formatted_lines = []
-    formatted_lines.append("最近价格走势和量价关系分析 / Recent Price Trend and Volume-Price Relationship Analysis:")
+    formatted_lines.append("最近价格走势和量价关系分析（2小时K线）/ Recent Price Trend and Volume-Price Relationship Analysis (2-hour K-line):")
     formatted_lines.append("=" * 60)
     
     for ticker, analysis in price_trend_analysis.items():
@@ -558,14 +817,14 @@ def format_price_trend_analysis_for_prompt(price_trend_analysis: dict) -> str:
         formatted_lines.append(f"\n【{ticker}】")
         formatted_lines.append(f"  当前价格 / Current Price: ${analysis.get('current_price', 0):.2f}")
         
-        # 价格走势
+        # 价格走势（基于2小时K线，5根K线约10小时，10根K线约20小时，20根K线约40小时）
         price_changes = analysis.get("price_changes", {})
-        formatted_lines.append(f"  价格走势 / Price Trend:")
-        formatted_lines.append(f"    - 5日涨跌幅 / 5-day Change: {price_changes.get('5d', 0):+.2f}%")
-        formatted_lines.append(f"    - 10日涨跌幅 / 10-day Change: {price_changes.get('10d', 0):+.2f}%")
-        formatted_lines.append(f"    - 20日涨跌幅 / 20-day Change: {price_changes.get('20d', 0):+.2f}%")
-        formatted_lines.append(f"    - 5日趋势 / 5-day Trend: {analysis.get('trend_5d', 'unknown')}")
-        formatted_lines.append(f"    - 5日波动率 / 5-day Volatility: {analysis.get('volatility_5d', 0):.2f}%")
+        formatted_lines.append(f"  价格走势 / Price Trend (基于2小时K线 / Based on 2-hour K-line):")
+        formatted_lines.append(f"    - 最近5根K线涨跌幅 / Last 5 K-lines Change (~10 hours): {price_changes.get('5d', 0):+.2f}%")
+        formatted_lines.append(f"    - 最近10根K线涨跌幅 / Last 10 K-lines Change (~20 hours): {price_changes.get('10d', 0):+.2f}%")
+        formatted_lines.append(f"    - 最近20根K线涨跌幅 / Last 20 K-lines Change (~40 hours): {price_changes.get('20d', 0):+.2f}%")
+        formatted_lines.append(f"    - 最近5根K线趋势 / Last 5 K-lines Trend: {analysis.get('trend_5d', 'unknown')}")
+        formatted_lines.append(f"    - 最近5根K线波动率 / Last 5 K-lines Volatility: {analysis.get('volatility_5d', 0):.2f}%")
         
         # 量价关系
         formatted_lines.append(f"  量价关系 / Volume-Price Relationship:")
@@ -578,16 +837,53 @@ def format_price_trend_analysis_for_prompt(price_trend_analysis: dict) -> str:
         formatted_lines.append(f"    - 价涨量缩天数 / Price Up Volume Down Days (背离): {volume_price_stats.get('price_up_volume_down', 0)}")
         formatted_lines.append(f"    - 价跌量增天数 / Price Down Volume Up Days (背离): {volume_price_stats.get('price_down_volume_up', 0)}")
         
-        # 成交量分析
+        # 成交量分析（基于2小时K线）
         volume_analysis = analysis.get("volume_analysis", {})
-        formatted_lines.append(f"  成交量分析 / Volume Analysis:")
-        formatted_lines.append(f"    - 5日平均成交量 / 5-day Avg Volume: {volume_analysis.get('avg_volume_5d', 0):,}")
-        formatted_lines.append(f"    - 20日平均成交量 / 20-day Avg Volume: {volume_analysis.get('avg_volume_20d', 0):,}")
-        formatted_lines.append(f"    - 成交量比率 / Volume Ratio (5d/20d): {volume_analysis.get('volume_ratio', 1.0):.2f}")
+        formatted_lines.append(f"  成交量分析 / Volume Analysis (基于2小时K线 / Based on 2-hour K-line):")
+        formatted_lines.append(f"    - 最近5根K线平均成交量 / Last 5 K-lines Avg Volume: {volume_analysis.get('avg_volume_5d', 0):,}")
+        formatted_lines.append(f"    - 最近20根K线平均成交量 / Last 20 K-lines Avg Volume: {volume_analysis.get('avg_volume_20d', 0):,}")
+        formatted_lines.append(f"    - 成交量比率 / Volume Ratio (5 K-lines / 20 K-lines): {volume_analysis.get('volume_ratio', 1.0):.2f}")
         if volume_analysis.get("volume_ratio", 1.0) > 1.2:
             formatted_lines.append(f"      → 近期成交量放大 / Recent volume increase")
         elif volume_analysis.get("volume_ratio", 1.0) < 0.8:
             formatted_lines.append(f"      → 近期成交量萎缩 / Recent volume decrease")
+        
+        # 放量分析（重要信号）
+        volume_surge = analysis.get("volume_surge_analysis", {})
+        if volume_surge.get("is_volume_surge", False):
+            formatted_lines.append(f"  放量分析 / Volume Surge Analysis (重要信号 / Important Signal):")
+            surge_types = volume_surge.get("surge_type", [])
+            if surge_types:
+                formatted_lines.append(f"    - 放量类型 / Surge Type: {', '.join(surge_types)}")
+            
+            surge_ratio = volume_surge.get("surge_ratio", 0.0)
+            if surge_ratio > 0:
+                formatted_lines.append(f"    - 单日放量幅度 / Single Day Surge Ratio: {surge_ratio:.2f}%")
+            
+            continuous_days = volume_surge.get("continuous_days", 0)
+            if continuous_days > 0:
+                formatted_lines.append(f"    - 连续放量天数 / Continuous Surge Days: {continuous_days}")
+            
+            bullish_prob = volume_surge.get("bullish_probability", 0)
+            if bullish_prob > 0:
+                formatted_lines.append(f"    - 看涨概率 / Bullish Probability: {bullish_prob}%")
+                if bullish_prob >= 70:
+                    formatted_lines.append(f"      → 高概率看涨信号 / High Probability Bullish Signal")
+                elif bullish_prob >= 60:
+                    formatted_lines.append(f"      → 中等概率看涨信号 / Medium Probability Bullish Signal")
+            
+            # 详细说明放量类型
+            if volume_surge.get("is_bottom_surge", False):
+                formatted_lines.append(f"    - 底部放量 / Bottom Surge: 是 / Yes")
+                formatted_lines.append(f"      → 股票长期下跌后，在低位出现成交量大幅放大，可能是主力资金开始吸筹、准备启动行情的信号")
+            if volume_surge.get("is_breakthrough_surge", False):
+                formatted_lines.append(f"    - 突破压力位放量 / Breakthrough Surge: 是 / Yes")
+                formatted_lines.append(f"      → 股价突破重要阻力位时成交量明显放大，说明多方力量强劲，可能继续上涨")
+            if volume_surge.get("is_early_uptrend_surge", False):
+                formatted_lines.append(f"    - 上涨初期持续放量 / Early Uptrend Surge: 是 / Yes")
+                formatted_lines.append(f"      → 上涨初期成交量持续放大，表明市场关注度和参与度提升，可能延续上涨趋势")
+        else:
+            formatted_lines.append(f"  放量分析 / Volume Surge Analysis: 未检测到放量 / No volume surge detected")
         
         formatted_lines.append("-" * 60)
     
@@ -604,6 +900,7 @@ def generate_short_term_decision(
     filtered_news_by_ticker: dict[str, list[dict]],
     technical_analysis: dict,
     price_trend_analysis: dict,
+    recent_operations: dict,
     agent_id: str,
     state: AgentState,
 ) -> ShortTermNewsAgentOutput:
@@ -619,6 +916,7 @@ def generate_short_term_decision(
         filtered_news_by_ticker: 筛选后的新闻（按股票分组）
         technical_analysis: 技术分析结果字典
         price_trend_analysis: 价格走势和量价关系分析字典
+        recent_operations: 近5天的历史操作记录字典
         agent_id: 代理 ID
         state: AgentState 对象
     
@@ -636,6 +934,9 @@ def generate_short_term_decision(
     
     # 格式化价格走势和量价关系分析信息
     formatted_price_trend = format_price_trend_analysis_for_prompt(price_trend_analysis)
+    
+    # 格式化历史操作记录
+    formatted_recent_operations = format_recent_operations_for_prompt(recent_operations)
     
     # 构建给大模型的提示模板
     template = ChatPromptTemplate.from_messages(get_prompt_messages())
@@ -669,6 +970,12 @@ def generate_short_term_decision(
         prompt_data["price_trend_analysis"] = formatted_price_trend
     else:
         prompt_data["price_trend_analysis"] = "无价格走势数据 / No price trend data"
+    
+    # 如果存在历史操作记录，添加到提示数据中
+    if formatted_recent_operations:
+        prompt_data["recent_operations"] = formatted_recent_operations
+    else:
+        prompt_data["recent_operations"] = "无历史操作记录 / No recent operations history"
     
     # 调用模板生成提示
     prompt = template.invoke(prompt_data)
@@ -716,6 +1023,60 @@ def generate_short_term_decision(
         print(f"\n⚠️ LLM调用失败，已使用默认持有决策")
         print(f"失败原因: {error_msg}")
         print("所有股票的决策已设置为默认的'持有'操作，信心度为0")
+    
+    # 验证和修正建议价格（确保价格合理性）
+    for ticker, decision in llm_out.decisions.items():
+        current_price = current_prices.get(ticker)
+        if current_price is None:
+            # 如果没有当前价格，无法验证，跳过
+            continue
+        
+        # 获取建议价格
+        suggested_price = decision.suggested_price
+        if suggested_price is None:
+            # 如果没有建议价格，跳过
+            continue
+        
+        # 根据操作类型验证和修正建议价格
+        action = decision.action
+        price_adjusted = False
+        original_price = suggested_price
+        
+        if action == "buy":
+            # 买入操作：建议价格必须 <= 当前价格
+            if suggested_price > current_price:
+                # 价格不合理，修正为当前价格的99%
+                decision.suggested_price = round(current_price * 0.99, 2)
+                price_adjusted = True
+                print(f"⚠️  {ticker} 买入建议价格不合理（${original_price:.2f} > 当前价格${current_price:.2f}），已自动修正为${decision.suggested_price:.2f}")
+        
+        elif action == "sell":
+            # 卖出操作：建议价格必须 >= 当前价格
+            if suggested_price < current_price:
+                # 价格不合理，修正为当前价格的101%
+                decision.suggested_price = round(current_price * 1.01, 2)
+                price_adjusted = True
+                print(f"⚠️  {ticker} 卖出建议价格不合理（${original_price:.2f} < 当前价格${current_price:.2f}），已自动修正为${decision.suggested_price:.2f}")
+        
+        elif action == "short":
+            # 做空操作：建议价格必须 >= 当前价格
+            if suggested_price < current_price:
+                # 价格不合理，修正为当前价格的101%
+                decision.suggested_price = round(current_price * 1.01, 2)
+                price_adjusted = True
+                print(f"⚠️  {ticker} 做空建议价格不合理（${original_price:.2f} < 当前价格${current_price:.2f}），已自动修正为${decision.suggested_price:.2f}")
+        
+        elif action == "cover":
+            # 平仓操作：建议价格必须 <= 当前价格
+            if suggested_price > current_price:
+                # 价格不合理，修正为当前价格的99%
+                decision.suggested_price = round(current_price * 0.99, 2)
+                price_adjusted = True
+                print(f"⚠️  {ticker} 平仓建议价格不合理（${original_price:.2f} > 当前价格${current_price:.2f}），已自动修正为${decision.suggested_price:.2f}")
+        
+        # 如果价格被调整，在推理中添加说明
+        if price_adjusted:
+            decision.reasoning += f"\n\n【价格修正说明】：原建议价格${original_price:.2f}不合理（与当前价格${current_price:.2f}相比不符合{action}操作的逻辑），已自动修正为${decision.suggested_price:.2f}。"
     
     # 保存 LLM 的完整分析内容到状态中，供展示使用
     llm_analysis_content = {}

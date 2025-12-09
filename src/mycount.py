@@ -25,14 +25,14 @@ initial_positions = {
             "short_cost_basis": 0.0,
         },
         "NIO": {
-            "long": 150,
-            "long_cost_basis": -8.5,
+            "long": 4400,
+            "long_cost_basis": 6,
             "short": 0,
             "short_cost_basis": 0.0,
         },
         "MP": {
-            "long": 55,
-            "long_cost_basis": 70,
+            "long": 52,
+            "long_cost_basis": 71,
             "short": 0,
             "short_cost_basis": 0.0,
         },
@@ -51,6 +51,12 @@ initial_positions = {
         "ORCL": {
             "long": 12,
             "long_cost_basis": 240,
+            "short": 0,
+            "short_cost_basis": 0.0, 
+        },
+        "MSTR": {
+            "long": 0,
+            "long_cost_basis": 0,
             "short": 0,
             "short_cost_basis": 0.0, 
         }
@@ -73,11 +79,11 @@ initial_realized_gains = {
             "short": 0.0,
         },
         "NIO": {
-            "long": 2232,
+            "long": -4432,
             "short": 0.0,
         },
         "MP": {
-            "long": -764,
+            "long": -964,
             "short": 0.0,
         },
         "EL": {
@@ -91,5 +97,9 @@ initial_realized_gains = {
         "ORCL": {
            "long": -220,
             "short": 0.0,
-        }
+        },
+        "MSTR": {
+           "long": 0.0,
+            "short": 0.0,
+        },
     }
