@@ -28,6 +28,8 @@ from src.tools.longbridge import _get_longbridge_ctx
 # Global cache instance
 _cache = get_cache()
 
+ctx = _get_longbridge_ctx()
+
 def _handle_api_error_with_cache(
     error_msg: str,
     cache_type: str,
@@ -248,7 +250,6 @@ def get_prices(ticker: str, start_date: str, end_date: str, period: Period = Per
     _cache.record_api_call("prices")
     
     try:
-        ctx = _get_longbridge_ctx()
         
         # 解析日期
         start_dt = datetime.datetime.strptime(start_date, "%Y-%m-%d")

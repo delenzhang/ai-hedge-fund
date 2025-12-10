@@ -635,6 +635,313 @@ def format_wechat_message(current_result: dict, changes: str, decisions_same: bo
     return message
 
 
+def format_technical_analysis_for_wechat(technical_analysis: dict) -> str:
+    """
+    格式化技术分析信息用于企业微信消息（简洁版）
+    
+    参数:
+        technical_analysis: 单个股票的技术分析结果
+    
+    返回:
+        格式化后的技术分析字符串
+    """
+    if not technical_analysis:
+        return "无技术分析数据"
+    
+    lines = []
+    
+    # 综合信号
+    signal = technical_analysis.get("signal", "neutral")
+    confidence = technical_analysis.get("confidence", 0)
+    
+    signal_emoji = {
+        "bullish": "📈",
+        "bearish": "📉",
+        "neutral": "➖"
+    }.get(signal, "➖")
+    
+    signal_text = {
+        "bullish": "看涨",
+        "bearish": "看跌",
+        "neutral": "中性"
+    }.get(signal, "中性")
+    
+    lines.append(f"{signal_emoji} 综合信号: {signal_text} (信心度 {confidence}%)")
+    
+    # 详细分析
+    reasoning = technical_analysis.get("reasoning", {})
+    if reasoning:
+        # 趋势跟踪
+        if "trend_following" in reasoning:
+            tf = reasoning["trend_following"]
+            tf_signal = tf.get("signal", "neutral")
+            tf_conf = tf.get("confidence", 0)
+            lines.append(f"  • 趋势跟踪: {tf_signal} ({tf_conf}%)")
+        
+        # 日线分析
+        if "daily_kline_analysis" in reasoning:
+            daily = reasoning["daily_kline_analysis"]
+            strategy = daily.get("strategy", "neutral")
+            trend_type = daily.get("trend_type", "unknown")
+            trend_strength = daily.get("trend_strength", 0)
+            lines.append(f"  • 日线趋势: {strategy} | {trend_type} | 强度{trend_strength}")
+        
+        # 小时线分析
+        if "hourly_kline_analysis" in reasoning:
+            hourly = reasoning["hourly_kline_analysis"]
+            tactical_signal = hourly.get("tactical_signal", "wait")
+            entry_point = hourly.get("entry_point_detected", False)
+            entry_text = "是" if entry_point else "否"
+            lines.append(f"  • 小时线战术: {tactical_signal} | 买入点: {entry_text}")
+    
+    return "\n".join(lines)
+
+
+def format_volume_price_analysis_for_wechat(price_trend: dict) -> str:
+    """
+    格式化量价关系分析信息用于企业微信消息（详细版，包含量价理论解释）
+    
+    参数:
+        price_trend: 单个股票的价格走势和量价关系分析结果
+    
+    返回:
+        格式化后的量价关系分析字符串
+    """
+    if not price_trend or "error" in price_trend:
+        return "无量价数据"
+    
+    lines = []
+    
+    # 当前价格和趋势
+    current_price = price_trend.get("current_price", 0)
+    trend_5d = price_trend.get("trend_5d", "unknown")
+    price_changes = price_trend.get("price_changes", {})
+    change_5d = price_changes.get("5d", 0)
+    
+    lines.append(f"💰 当前价格: ${current_price:.2f}")
+    lines.append(f"📊 5日趋势: {trend_5d} ({change_5d:+.2f}%)")
+    
+    # 量价关系核心信息
+    vp_relation = price_trend.get("volume_price_relation", "unknown")
+    vp_correlation = price_trend.get("volume_price_correlation", 0)
+    
+    lines.append(f"")
+    lines.append(f"📈 量价关系: {vp_relation}")
+    lines.append(f"   相关系数: {vp_correlation:.3f}")
+    
+    # 量价统计详情（核心量价理论）
+    vp_stats = price_trend.get("volume_price_stats", {})
+    price_up_vol_up = vp_stats.get("price_up_volume_up", 0)
+    price_down_vol_down = vp_stats.get("price_down_volume_down", 0)
+    price_up_vol_down = vp_stats.get("price_up_volume_down", 0)
+    price_down_vol_up = vp_stats.get("price_down_volume_up", 0)
+    
+    lines.append(f"")
+    lines.append(f"📊 量价配合统计 (近5根K线):")
+    
+    # 健康的量价关系
+    if price_up_vol_up > 0:
+        lines.append(f"   ✅ 价涨量增: {price_up_vol_up}次")
+        lines.append(f"      → 上涨有资金支持，健康上涨信号")
+    
+    if price_down_vol_down > 0:
+        lines.append(f"   ✅ 价跌量缩: {price_down_vol_down}次")
+        lines.append(f"      → 下跌抛压不重，可能是正常回调")
+    
+    # 背离的量价关系（警示）
+    if price_up_vol_down > 0:
+        lines.append(f"   ⚠️ 价涨量缩: {price_up_vol_down}次")
+        lines.append(f"      → 上涨乏力，缺乏资金支持，可能见顶")
+    
+    if price_down_vol_up > 0:
+        lines.append(f"   ⚠️ 价跌量增: {price_down_vol_up}次")
+        lines.append(f"      → 大量抛压，可能加速下跌")
+    
+    # 放量分析（重要信号）
+    volume_surge = price_trend.get("volume_surge_analysis", {})
+    if volume_surge.get("is_volume_surge", False):
+        lines.append(f"")
+        lines.append(f"🔥 放量检测: 已检测到放量")
+        
+        surge_types = volume_surge.get("surge_type", [])
+        bullish_prob = volume_surge.get("bullish_probability", 0)
+        
+        if surge_types:
+            lines.append(f"   类型: {', '.join(surge_types)}")
+        
+        if bullish_prob > 0:
+            lines.append(f"   看涨概率: {bullish_prob}%")
+        
+        # 详细说明不同放量类型的含义
+        if volume_surge.get("is_bottom_surge", False):
+            lines.append(f"   💡 底部放量:")
+            lines.append(f"      股票长期下跌后在低位放量，可能是")
+            lines.append(f"      主力资金开始吸筹，准备启动行情")
+        
+        if volume_surge.get("is_breakthrough_surge", False):
+            lines.append(f"   💡 突破压力位放量:")
+            lines.append(f"      股价突破阻力位时放量，说明多方")
+            lines.append(f"      力量强劲，可能继续上涨")
+        
+        if volume_surge.get("is_early_uptrend_surge", False):
+            lines.append(f"   💡 上涨初期持续放量:")
+            lines.append(f"      上涨初期成交量持续放大，表明市场")
+            lines.append(f"      关注度提升，可能延续上涨趋势")
+        
+        # 放量详情
+        surge_ratio = volume_surge.get("surge_ratio", 0)
+        if surge_ratio > 0:
+            lines.append(f"   单日放量幅度: {surge_ratio:.2f}%")
+        
+        continuous_days = volume_surge.get("continuous_days", 0)
+        if continuous_days > 0:
+            lines.append(f"   连续放量: {continuous_days}天")
+    
+    # 成交量比率
+    volume_analysis = price_trend.get("volume_analysis", {})
+    volume_ratio = volume_analysis.get("volume_ratio", 1.0)
+    
+    lines.append(f"")
+    lines.append(f"📊 成交量比率 (5日/20日): {volume_ratio:.2f}")
+    if volume_ratio > 1.2:
+        lines.append(f"   → 近期成交量明显放大，市场活跃")
+    elif volume_ratio < 0.8:
+        lines.append(f"   → 近期成交量萎缩，市场观望")
+    else:
+        lines.append(f"   → 成交量保持稳定")
+    
+    return "\n".join(lines)
+
+
+def format_single_ticker_wechat_message(
+    ticker: str,
+    decision: dict,
+    filtered_news_by_ticker: dict,
+    fed_expectation: dict | None = None,
+    changes_desc: str = "",
+    technical_analysis: dict | None = None,
+    price_trend_analysis: dict | None = None,
+) -> str:
+    """
+    格式化单个股票的企业微信消息内容
+    
+    参数:
+        ticker: 股票代码
+        decision: 该股票的决策信息
+        filtered_news_by_ticker: 筛选后的新闻数据（按股票分组）
+        fed_expectation: 降息预期数据（可选）
+        changes_desc: 变化描述（可选）
+        technical_analysis: 该股票的技术分析数据（可选）
+        price_trend_analysis: 该股票的价格走势和量价关系分析数据（可选）
+    
+    返回:
+        格式化后的消息字符串
+    """
+    timestamp = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+    
+    # 获取决策信息
+    action = decision.get("action", "hold")
+    quantity = decision.get("quantity", 0)
+    confidence = decision.get("confidence", 0)
+    reasoning = decision.get("reasoning", "")
+    score = decision.get("score", {})
+    suggested_price = decision.get("suggested_price")
+    time_window = decision.get("time_window", "")
+    
+    # 获取评分详情
+    fed_impact = score.get("fed_impact", 0)
+    news_impact = score.get("news_impact", 0)
+    position_analysis = score.get("position_analysis", 0)
+    total_score = score.get("total_score", 0)
+    
+    # 获取操作图标
+    action_emoji = {
+        "buy": "📈",
+        "sell": "📉",
+        "short": "🔻",
+        "cover": "🔺",
+        "hold": "⏸️"
+    }.get(action, "⏸️")
+    
+    # 格式化操作描述
+    action_desc = format_action_description(action, quantity)
+    
+    # 格式化信心度说明
+    confidence_explanation = format_confidence_explanation(confidence)
+    
+    # 构建消息内容
+    message_parts = [
+        f"<@delenzhang> 短线新闻分析提醒 - {ticker}",
+        f"",
+        f"⏰ 时间: {timestamp}",
+        f"",
+        f"{action_emoji} 操作建议: {action_desc}",
+        f"🎯 信心度: {confidence}%",
+        f"📊 总分: {total_score}/100",
+        f"",
+        f"📈 评分详情:",
+        f"  • 降息影响: {fed_impact}/50",
+        f"  • 新闻影响: {news_impact}/50",
+        f"  • 持仓分析: {position_analysis}/50",
+    ]
+    
+    # 添加建议价格和时间窗口（如果有）
+    if suggested_price:
+        message_parts.append(f"")
+        message_parts.append(f"💵 建议价格: ${suggested_price:.2f}")
+    
+    if time_window:
+        message_parts.append(f"⏱️ 时间窗口: {time_window}")
+    
+    # 添加原因
+    if reasoning:
+        message_parts.append(f"")
+        message_parts.append(f"💭 决策原因:")
+        message_parts.append(f"{reasoning}")
+    
+    # 添加信心度说明
+    message_parts.append(f"")
+    message_parts.append(confidence_explanation)
+    
+    # 添加技术分析（如果有）
+    if technical_analysis:
+        message_parts.append(f"")
+        message_parts.append(f"📊 技术分析:")
+        technical_str = format_technical_analysis_for_wechat(technical_analysis)
+        message_parts.append(technical_str)
+    
+    # 添加量价关系分析（如果有）
+    if price_trend_analysis:
+        message_parts.append(f"")
+        message_parts.append(f"📈 量价理论分析:")
+        volume_price_str = format_volume_price_analysis_for_wechat(price_trend_analysis)
+        message_parts.append(volume_price_str)
+    
+    # 添加相关新闻
+    ticker_news = filtered_news_by_ticker.get(ticker, [])
+    if ticker_news:
+        news_summary = format_news_summary(ticker_news, max_items=None)
+        if news_summary:
+            message_parts.append(f"")
+            message_parts.append(f"📰 相关新闻:")
+            message_parts.append(news_summary)
+    
+    # 添加降息预期信息（如果有）
+    if fed_expectation and "error" not in fed_expectation:
+        total_cut = fed_expectation.get("total_cut_probability", 0.0) * 100
+        no_change = fed_expectation.get("no_change", 0.0) * 100
+        message_parts.append(f"")
+        message_parts.append(f"📊 降息预期: 降息 {total_cut:.1f}% | 不变 {no_change:.1f}%")
+    
+    # 添加变化描述（如果有）
+    if changes_desc and changes_desc != "操作建议与上次相同":
+        message_parts.append(f"")
+        message_parts.append(f"🔔 变化详情:")
+        message_parts.append(changes_desc)
+    
+    return "\n".join(message_parts)
+
+
 def get_default_model_config(project_root: Path) -> tuple[str, str]:
     """
     从 api_models.json 获取第一个模型作为默认配置

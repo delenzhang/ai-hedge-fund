@@ -27,6 +27,55 @@ from src.utils.api_key import get_api_key_from_state
 from longport.openapi import Period
 # 导入持仓信息
 from src.mycount import initial_positions, initial_realized_gains, CountInfo
+# 导入日期时间处理
+from datetime import datetime, timedelta
+
+
+def filter_news_by_hours(filtered_news_by_ticker: dict[str, list[dict]], hours: int = 2) -> dict[str, list[dict]]:
+    """
+    过滤出近N小时内的新闻（用于防止重复发送旧新闻）
+    
+    参数:
+        filtered_news_by_ticker: 按股票分组的新闻字典，格式: {"TICKER": [新闻列表], ...}
+        hours: 要保留的小时数，默认2小时
+    
+    返回:
+        近N小时内的新闻字典
+    """
+    if not filtered_news_by_ticker:
+        return {}
+    
+    # 计算截止时间
+    cutoff_time = datetime.now() - timedelta(hours=hours)
+    
+    result = {}
+    for ticker, news_list in filtered_news_by_ticker.items():
+        if not news_list:
+            result[ticker] = []
+            continue
+        
+        recent_news = []
+        for news_item in news_list:
+            try:
+                # 解析新闻日期时间
+                news_datetime_str = news_item.get("datetime", "")
+                if not news_datetime_str:
+                    continue
+                
+                # 解析日期时间字符串，格式: "2025-11-19 15:38"
+                news_datetime = datetime.strptime(news_datetime_str, "%Y-%m-%d %H:%M")
+                
+                # 如果新闻日期在截止时间之后，则包含
+                if news_datetime >= cutoff_time:
+                    recent_news.append(news_item)
+            except Exception as e:
+                # 如果解析失败，跳过该新闻
+                print(f"⚠️ 解析新闻时间失败: {news_datetime_str}, 错误: {e}")
+                continue
+        
+        result[ticker] = recent_news
+    
+    return result
 
 
 # 定义短线交易决策数据模型
@@ -97,13 +146,16 @@ def short_term_news_agent(state: AgentState, agent_id: str = "short_term_news_ag
     # 使用新闻管理代理筛选相关新闻（只使用近5天的新闻）
     # 不使用 progress 跟踪，因为 short_term_news_agent 不需要进度显示
     filtered_news_by_ticker = filter_news_for_tickers(tickers, agent_id, state, days=5, use_progress=False)
-    print(f"新闻筛选完成，各股票相关新闻数量: {[(t, len(n)) for t, n in filtered_news_by_ticker.items()]}")
+    print(f"新闻筛选完成（5天内），各股票相关新闻数量: {[(t, len(n)) for t, n in filtered_news_by_ticker.items()]}")
+    
+    # 再次过滤，只保留近2小时内的新闻（防止重复发送旧新闻）
+    filtered_news_by_ticker = filter_news_by_hours(filtered_news_by_ticker, hours=2)
+    print(f"新闻筛选完成（2小时内），各股票相关新闻数量: {[(t, len(n)) for t, n in filtered_news_by_ticker.items()]}")
     state["data"]["filtered_news_by_ticker"] = filtered_news_by_ticker
     
     # 调用技术分析代理获取技术面分析结果
     # 确保 state 中有必要的日期信息（如果没有，使用默认值：最近6个月）
     if "start_date" not in state["data"] or "end_date" not in state["data"]:
-        from datetime import datetime, timedelta
         end_date = datetime.now().strftime("%Y-%m-%d")
         start_date = (datetime.now() - timedelta(days=180)).strftime("%Y-%m-%d")
         state["data"]["start_date"] = start_date
@@ -141,7 +193,6 @@ def short_term_news_agent(state: AgentState, agent_id: str = "short_term_news_ag
         print("开始分析最近价格走势和量价关系（2小时K线）...")
         api_key = get_api_key_from_state(state, "FINANCIAL_DATASETS_API_KEY")
         # 获取最近5天的2小时K线数据用于分析
-        from datetime import datetime, timedelta
         end_date = state["data"].get("end_date", datetime.now().strftime("%Y-%m-%d"))
         start_date = (datetime.strptime(end_date, "%Y-%m-%d") - timedelta(days=5)).strftime("%Y-%m-%d")
         
@@ -890,7 +941,205 @@ def format_price_trend_analysis_for_prompt(price_trend_analysis: dict) -> str:
     return "\n".join(formatted_lines)
 
 
-# 从 LLM 获取短线交易决策
+# 从 LLM 获取单个股票的短线交易决策
+def generate_single_ticker_decision(
+    ticker: str,
+    position: dict,
+    realized_gain: dict,
+    current_price: float,
+    fed_expectation: dict[str, float] | None,
+    ticker_news: list[dict],
+    ticker_technical: dict,
+    ticker_price_trend: dict,
+    ticker_recent_operations: list[dict],
+    agent_id: str,
+    state: AgentState,
+) -> ShortTermDecision:
+    """
+    使用 LLM 生成单个股票的短线交易决策
+    
+    参数:
+        ticker: 股票代码
+        position: 该股票的持仓信息
+        realized_gain: 该股票的已实现盈亏
+        current_price: 该股票的当前价格
+        fed_expectation: 美联储降息预期数据
+        ticker_news: 该股票的相关新闻
+        ticker_technical: 该股票的技术分析结果
+        ticker_price_trend: 该股票的价格走势和量价关系分析
+        ticker_recent_operations: 该股票近5天的历史操作记录
+        agent_id: 代理 ID
+        state: AgentState 对象
+    
+    返回:
+        ShortTermDecision 对象，包含该股票的交易决策
+    """
+    # 格式化单个股票的持仓信息
+    positions_dict = {ticker: position}
+    realized_gains_dict = {ticker: realized_gain}
+    positions_str = format_positions_for_prompt(positions_dict, realized_gains_dict)
+    
+    # 格式化单个股票的新闻信息
+    filtered_news_by_ticker = {ticker: ticker_news}
+    formatted_news = format_news_for_prompt(filtered_news_by_ticker)
+    
+    # 格式化单个股票的技术分析信息
+    technical_analysis_dict = {ticker: ticker_technical} if ticker_technical else {}
+    formatted_technical = format_technical_analysis_for_prompt(technical_analysis_dict)
+    
+    # 格式化单个股票的价格走势和量价关系分析信息
+    price_trend_analysis_dict = {ticker: ticker_price_trend} if ticker_price_trend else {}
+    formatted_price_trend = format_price_trend_analysis_for_prompt(price_trend_analysis_dict)
+    
+    # 格式化单个股票的历史操作记录
+    recent_operations_dict = {ticker: ticker_recent_operations} if ticker_recent_operations else {}
+    formatted_recent_operations = format_recent_operations_for_prompt(recent_operations_dict)
+    
+    # 构建给大模型的提示模板
+    template = ChatPromptTemplate.from_messages(get_prompt_messages())
+    
+    # 构建提示数据
+    prompt_data = {
+        "positions": positions_str,
+        "current_prices": json.dumps({ticker: current_price}, separators=(",", ":"), ensure_ascii=False),
+    }
+    
+    # 如果存在降息预期数据，添加到提示数据中
+    if fed_expectation:
+        prompt_data["fed_expectation"] = json.dumps(fed_expectation, separators=(",", ":"), ensure_ascii=False)
+    else:
+        prompt_data["fed_expectation"] = "null"
+    
+    # 如果存在筛选后的新闻，添加到提示数据中
+    if formatted_news:
+        prompt_data["latest_news"] = formatted_news
+    else:
+        prompt_data["latest_news"] = "无相关新闻 / No relevant news"
+    
+    # 如果存在技术分析数据，添加到提示数据中
+    if formatted_technical:
+        prompt_data["technical_analysis"] = formatted_technical
+    else:
+        prompt_data["technical_analysis"] = "无技术分析数据 / No technical analysis data"
+    
+    # 如果存在价格走势分析数据，添加到提示数据中
+    if formatted_price_trend:
+        prompt_data["price_trend_analysis"] = formatted_price_trend
+    else:
+        prompt_data["price_trend_analysis"] = "无价格走势数据 / No price trend data"
+    
+    # 如果存在历史操作记录，添加到提示数据中
+    if formatted_recent_operations:
+        prompt_data["recent_operations"] = formatted_recent_operations
+    else:
+        prompt_data["recent_operations"] = "无历史操作记录 / No recent operations history"
+    
+    # 调用模板生成提示
+    prompt = template.invoke(prompt_data)
+    
+    # 调试输出
+    print(f"[{ticker}] 开始分析...")
+    
+    # 用于存储LLM调用时的错误信息
+    llm_error_info = {"error": None, "failed": False}
+    
+    # 默认工厂函数：如果 LLM 失败，则返回持有决策
+    def create_default_output():
+        llm_error_info["failed"] = True
+        error_msg = llm_error_info.get("error", "LLM调用失败（重试3次后仍失败）")
+        decisions = {
+            ticker: ShortTermDecision(
+                action="hold",
+                quantity=0,
+                confidence=0,
+                reasoning=f"LLM调用失败，使用默认决策：持有。失败原因: {error_msg}",
+                suggested_price=None,
+                time_window="5个交易日左右",
+                score={},
+            )
+        }
+        return ShortTermNewsAgentOutput(
+            decisions=decisions,
+            overall_assessment=f"无法生成分析，使用默认持有决策。LLM调用失败原因: {error_msg}",
+        )
+    
+    # 调用 LLM 生成交易决策
+    llm_out = call_llm(
+        prompt=prompt,
+        pydantic_model=ShortTermNewsAgentOutput,
+        agent_name=agent_id,
+        state=state,
+        default_factory=create_default_output,
+    )
+    
+    # 检查是否使用了默认输出
+    if llm_error_info.get("failed", False):
+        error_msg = llm_error_info.get("error") or "LLM调用失败（重试3次后仍失败，请查看上方错误信息）"
+        print(f"\n⚠️ [{ticker}] LLM调用失败，已使用默认持有决策")
+        print(f"失败原因: {error_msg}")
+    
+    # 获取该股票的决策（LLM 可能返回多个股票的决策，我们只取当前股票的）
+    decision = llm_out.decisions.get(ticker)
+    
+    if not decision:
+        # 如果 LLM 没有返回该股票的决策，创建一个默认的持有决策
+        print(f"⚠️ [{ticker}] LLM 未返回该股票的决策，使用默认持有决策")
+        decision = ShortTermDecision(
+            action="hold",
+            quantity=0,
+            confidence=0,
+            reasoning=f"LLM 未返回 {ticker} 的决策，使用默认持有决策",
+            suggested_price=None,
+            time_window="5个交易日左右",
+            score={},
+        )
+    
+    # 验证和修正建议价格（确保价格合理性）
+    if current_price is not None:
+        suggested_price = decision.suggested_price
+        if suggested_price is not None:
+            action = decision.action
+            price_adjusted = False
+            original_price = suggested_price
+            
+            if action == "buy":
+                # 买入操作：建议价格必须 <= 当前价格
+                if suggested_price > current_price:
+                    decision.suggested_price = round(current_price * 0.99, 2)
+                    price_adjusted = True
+                    print(f"⚠️ [{ticker}] 买入建议价格不合理（${original_price:.2f} > 当前价格${current_price:.2f}），已自动修正为${decision.suggested_price:.2f}")
+            
+            elif action == "sell":
+                # 卖出操作：建议价格必须 >= 当前价格
+                if suggested_price < current_price:
+                    decision.suggested_price = round(current_price * 1.01, 2)
+                    price_adjusted = True
+                    print(f"⚠️ [{ticker}] 卖出建议价格不合理（${original_price:.2f} < 当前价格${current_price:.2f}），已自动修正为${decision.suggested_price:.2f}")
+            
+            elif action == "short":
+                # 做空操作：建议价格必须 >= 当前价格
+                if suggested_price < current_price:
+                    decision.suggested_price = round(current_price * 1.01, 2)
+                    price_adjusted = True
+                    print(f"⚠️ [{ticker}] 做空建议价格不合理（${original_price:.2f} < 当前价格${current_price:.2f}），已自动修正为${decision.suggested_price:.2f}")
+            
+            elif action == "cover":
+                # 平仓操作：建议价格必须 <= 当前价格
+                if suggested_price > current_price:
+                    decision.suggested_price = round(current_price * 0.99, 2)
+                    price_adjusted = True
+                    print(f"⚠️ [{ticker}] 平仓建议价格不合理（${original_price:.2f} > 当前价格${current_price:.2f}），已自动修正为${decision.suggested_price:.2f}")
+            
+            # 如果价格被调整，在推理中添加说明
+            if price_adjusted:
+                decision.reasoning += f"\n\n【价格修正说明】：原建议价格${original_price:.2f}不合理（与当前价格${current_price:.2f}相比不符合{action}操作的逻辑），已自动修正为${decision.suggested_price:.2f}。"
+    
+    print(f"[{ticker}] 分析完成 - 操作: {decision.action}, 信心度: {decision.confidence}%")
+    
+    return decision
+
+
+# 从 LLM 获取短线交易决策（批量分析，保留用于兼容性）
 def generate_short_term_decision(
     positions: dict,
     realized_gains: dict,
@@ -1094,5 +1343,142 @@ def generate_short_term_decision(
     state["data"]["short_term_news_analysis"] = llm_analysis_content
     state["data"]["short_term_overall_assessment"] = llm_out.overall_assessment
     
+    # 保存技术分析和价格走势数据供后续使用（如企业微信消息格式化）
+    state["data"]["technical_analysis_for_alert"] = technical_analysis
+    state["data"]["price_trend_analysis_for_alert"] = price_trend_analysis
+    
     return llm_out
+
+
+##### 短线新闻分析代理主函数 - 逐个股票分析版本 #####
+def short_term_news_agent_single_ticker(
+    ticker: str,
+    state: AgentState,
+    agent_id: str = "short_term_news_agent"
+) -> dict:
+    """
+    分析单个股票的消息面影响，并提供短线交易建议
+    
+    参数:
+        ticker: 要分析的股票代码
+        state: AgentState 对象，包含数据、消息和元数据
+        agent_id: 代理 ID，用于进度跟踪和模型配置
+    
+    返回:
+        包含该股票决策和分析数据的字典
+    """
+    # 从 mycount.py 获取持仓信息
+    positions = initial_positions
+    realized_gains = initial_realized_gains
+    
+    # 获取该股票的持仓信息
+    position = positions.get(ticker, {"long": 0, "long_cost_basis": 0.0, "short": 0, "short_cost_basis": 0.0})
+    realized_gain = realized_gains.get(ticker, {"long": 0.0, "short": 0.0})
+    
+    # 获取美联储降息预期数据（全局数据，所有股票共享）
+    fed_expectation = state["data"].get("fed_rate_cut_expectation")
+    if not fed_expectation:
+        fed_expectation = get_fed_rate_cut_expectation()
+        print(f"[{ticker}] 联储降息预期", fed_expectation)
+        state["data"]["fed_rate_cut_expectation"] = fed_expectation
+    
+    # 使用新闻管理代理筛选该股票的相关新闻（只使用近5天的新闻）
+    filtered_news_by_ticker = filter_news_for_tickers([ticker], agent_id, state, days=5, use_progress=False)
+    ticker_news = filtered_news_by_ticker.get(ticker, [])
+    print(f"[{ticker}] 新闻筛选完成（5天内），相关新闻数量: {len(ticker_news)}")
+    
+    # 再次过滤，只保留近2小时内的新闻（防止重复发送旧新闻）
+    filtered_news_by_ticker_2h = filter_news_by_hours({ticker: ticker_news}, hours=2)
+    ticker_news = filtered_news_by_ticker_2h.get(ticker, [])
+    print(f"[{ticker}] 新闻筛选完成（2小时内），相关新闻数量: {len(ticker_news)}")
+    
+    # 调用技术分析代理获取该股票的技术面分析结果
+    # 确保 state 中有必要的日期信息
+    if "start_date" not in state["data"] or "end_date" not in state["data"]:
+        end_date = datetime.now().strftime("%Y-%m-%d")
+        start_date = (datetime.now() - timedelta(days=180)).strftime("%Y-%m-%d")
+        state["data"]["start_date"] = start_date
+        state["data"]["end_date"] = end_date
+    
+    # 确保 state 中有 tickers
+    state["data"]["tickers"] = [ticker]
+    
+    # 确保 state 中有 analyst_signals 字典
+    if "analyst_signals" not in state["data"]:
+        state["data"]["analyst_signals"] = {}
+    
+    # 调用技术分析代理获取技术面分析结果
+    ticker_technical = {}
+    try:
+        print(f"[{ticker}] 开始技术分析...")
+        # 调用技术分析代理
+        technical_state = technical_analyst_agent(state, agent_id="technical_analyst_agent")
+        # 更新 state 以包含技术分析结果
+        state["data"] = technical_state["data"]
+        technical_analysis = state["data"].get("analyst_signals", {}).get("technical_analyst_agent", {})
+        ticker_technical = technical_analysis.get(ticker, {})
+        print(f"[{ticker}] 技术分析完成")
+    except Exception as e:
+        print(f"⚠️ [{ticker}] 技术分析失败: {e}")
+        ticker_technical = {}
+    
+    # 从状态中获取当前价格
+    current_prices = state["data"].get("current_prices", {})
+    current_price = current_prices.get(ticker)
+    
+    # 获取最近价格走势和量价关系分析（使用2小时K线）
+    ticker_price_trend = {}
+    try:
+        print(f"[{ticker}] 开始分析价格走势和量价关系（2小时K线）...")
+        api_key = get_api_key_from_state(state, "FINANCIAL_DATASETS_API_KEY")
+        # 获取最近5天的2小时K线数据用于分析
+        end_date = state["data"].get("end_date", datetime.now().strftime("%Y-%m-%d"))
+        start_date = (datetime.strptime(end_date, "%Y-%m-%d") - timedelta(days=5)).strftime("%Y-%m-%d")
+        
+        prices = get_prices(
+            ticker=ticker,
+            start_date=start_date,
+            end_date=end_date,
+            period=Period.Min_120,  # 使用2小时K线
+            api_key=api_key,
+        )
+        if prices and len(prices) >= 5:
+            ticker_price_trend = analyze_price_trend_and_volume(prices)
+        else:
+            ticker_price_trend = {"error": "数据不足"}
+        print(f"[{ticker}] 价格走势分析完成")
+    except Exception as e:
+        print(f"⚠️ [{ticker}] 价格走势分析失败: {e}")
+        ticker_price_trend = {"error": str(e)}
+    
+    # 加载近5天的历史操作记录作为参考
+    from src.tools.alert_utils import load_recent_operations_history
+    recent_operations = load_recent_operations_history(days=5)
+    ticker_recent_operations = recent_operations.get(ticker, [])
+    
+    # 调用生成单个股票交易决策函数
+    decision = generate_single_ticker_decision(
+        ticker=ticker,
+        position=position,
+        realized_gain=realized_gain,
+        current_price=current_price,
+        fed_expectation=fed_expectation,
+        ticker_news=ticker_news,
+        ticker_technical=ticker_technical,
+        ticker_price_trend=ticker_price_trend,
+        ticker_recent_operations=ticker_recent_operations,
+        agent_id=agent_id,
+        state=state,
+    )
+    
+    # 返回该股票的决策和分析数据
+    return {
+        "ticker": ticker,
+        "decision": decision,
+        "fed_expectation": fed_expectation,
+        "ticker_news": ticker_news,
+        "ticker_technical": ticker_technical,
+        "ticker_price_trend": ticker_price_trend,
+        "current_price": current_price,
+    }
 
